@@ -9,6 +9,9 @@ __pycache__/
 *.db
 garage_management.db
 
+# Security - Generated passwords
+.initial_admin_password.txt
+
 # IDE
 .vscode/
 .idea/
