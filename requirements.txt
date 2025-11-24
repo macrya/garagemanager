@@ -1,0 +1,20 @@
+# Garage Management System - Requirements
+# This application uses only Python standard library modules
+# No external dependencies are required
+
+# Python version: 3.6+
+#
+# Standard library modules used:
+# - http.server (web server)
+# - socketserver (TCP server)
+# - json (JSON encoding/decoding)
+# - sqlite3 (database)
+# - urllib.parse (URL parsing)
+# - hashlib (password hashing)
+# - secrets (secure token generation)
+# - datetime (date/time handling)
+# - os (operating system interface)
+# - mimetypes (MIME type handling)
+#
+# To run this application, simply ensure you have Python 3.6 or higher installed:
+#   python3 garage_server.py
