@@ -9,6 +9,10 @@ __pycache__/
 *.db
 garage_management.db
 
+# Environment variables
+.env
+.env.local
+
 # IDE
 .vscode/
 .idea/

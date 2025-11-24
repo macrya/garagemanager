@@ -15,8 +15,9 @@ from datetime import datetime, timedelta
 import os
 import mimetypes
 
-PORT = 5000
-DB_FILE = 'garage_management.db'
+# Use environment variable for PORT (required for cloud platforms like Render, Heroku)
+PORT = int(os.environ.get('PORT', '5000'))
+DB_FILE = os.environ.get('DB_FILE', 'garage_management.db')
 
 # Initialize database
 def init_database():
@@ -1020,7 +1021,9 @@ if __name__ == '__main__':
     print("=" * 60 + "\n")
 
     Handler = GarageRequestHandler
-    with socketserver.TCPServer(("", PORT), Handler) as httpd:
+    # Bind to 0.0.0.0 to allow external connections (required for cloud deployment)
+    HOST = os.environ.get('HOST', '0.0.0.0')
+    with socketserver.TCPServer((HOST, PORT), Handler) as httpd:
         try:
             httpd.serve_forever()
         except KeyboardInterrupt:

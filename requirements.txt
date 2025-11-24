@@ -1,0 +1,13 @@
+# Garage Management System
+# This application uses only Python standard library
+# No external dependencies required!
+
+# However, for deployment platforms like Render, Heroku, etc.
+# this file must exist (even if empty) to indicate a Python project
+
+# Optional: Specify Python version compatibility
+# python>=3.6
+
+# Note: If you want to add production WSGI server (recommended for production):
+# gunicorn==21.2.0
+# uvicorn==0.24.0
