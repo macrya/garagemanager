@@ -4,34 +4,66 @@ __pycache__/
 *$py.class
 *.so
 .Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+MANIFEST
 
-# Database
-*.db
-garage_management.db
+# Virtual Environment
+venv/
+ENV/
+env/
+.venv
 
-# IDE
+# IDEs
 .vscode/
 .idea/
 *.swp
 *.swo
-
-# OS
+*~
 .DS_Store
-Thumbs.db
+
+# Environment Variables
+.env
+.env.local
+.env.*.local
+
+# Database
+*.db
+*.sqlite
+*.sqlite3
+garage_management.db
+
+# Docker
+postgres_data/
+pgadmin_data/
+
+# Testing
+.pytest_cache/
+.coverage
+htmlcov/
+.tox/
 
 # Logs
 *.log
 *.out
+logs/
+
+# OS
+Thumbs.db
+.DS_Store
 
 # Instance folder
 instance/
-
-# Virtual environment
-venv/
-env/
-ENV/
-
-# Distribution / packaging
-dist/
-build/
-*.egg-info/
