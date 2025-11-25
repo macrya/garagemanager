@@ -15,7 +15,7 @@ from datetime import datetime, timedelta
 import os
 import mimetypes
 
-PORT = 5000
+PORT = int(os.environ.get('PORT', 5000))
 DB_FILE = 'garage_management.db'
 
 # Initialize database
