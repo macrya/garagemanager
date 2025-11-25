@@ -1,9 +1,7 @@
 # Garage Management System - Requirements
-
-# Production WSGI server
-gunicorn>=20.1.0
-
-# Python version: 3.6+
+#
+# This application uses ONLY Python standard library modules.
+# No external dependencies are required!
 #
 # Standard library modules used:
 # - http.server (web server)
@@ -17,5 +15,9 @@ gunicorn>=20.1.0
 # - os (operating system interface)
 # - mimetypes (MIME type handling)
 #
-# To run this application locally:
+# To run this application:
 #   python3 garage_server.py
+#
+# For Render.com deployment:
+#   The start command is: python3 garage_server.py
+#   (See render.yaml for full configuration)

@@ -5,7 +5,9 @@ services:
     region: oregon
     plan: free
     branch: main
-    buildCommand: pip install -r requirements.txt
+    # No external dependencies required - empty build or minimal pip install
+    buildCommand: pip install -r requirements.txt || true
+    # This is a standalone Python HTTP server - run directly with python3
     startCommand: python3 garage_server.py
     envVars:
       - key: PORT

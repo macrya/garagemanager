@@ -133,6 +133,27 @@ heroku create your-garage-app
 git push heroku main
 ```
 
+#### Render.com
+This repository is configured for Render deployment. See [RENDER_SETUP.md](RENDER_SETUP.md) for detailed instructions.
+
+**Quick Deploy:**
+1. Connect your GitHub repository to Render
+2. Create a new Web Service
+3. Select "Deploy from render.yaml"
+4. Render will automatically use the configuration
+
+**Important:** Make sure your service's start command is set to:
+```bash
+python3 garage_server.py
+```
+
+NOT:
+```bash
+gunicorn your_application.wsgi  # ❌ WRONG - will cause errors
+```
+
+See RENDER_SETUP.md for troubleshooting if you encounter "ModuleNotFoundError: No module named 'your_application'".
+
 ## Security Notes
 
 **IMPORTANT:** Before deploying to production:
