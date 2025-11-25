@@ -232,22 +232,65 @@ class GarageRequestHandler(http.server.SimpleHTTPRequestHandler):
         * { margin: 0; padding: 0; box-sizing: border-box; }
         body {
             font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
-            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            background:
+                /* Tire track pattern */
+                repeating-linear-gradient(
+                    90deg,
+                    rgba(255,255,255,0.03) 0px,
+                    rgba(255,255,255,0.03) 2px,
+                    transparent 2px,
+                    transparent 12px
+                ),
+                repeating-linear-gradient(
+                    0deg,
+                    rgba(255,255,255,0.02) 0px,
+                    rgba(255,255,255,0.02) 2px,
+                    transparent 2px,
+                    transparent 12px
+                ),
+                /* Racing stripes subtle effect */
+                linear-gradient(
+                    135deg,
+                    rgba(230,230,230,0.1) 0%,
+                    transparent 50%,
+                    rgba(230,230,230,0.1) 100%
+                ),
+                /* Main automotive gradient - dark asphalt to lighter road */
+                linear-gradient(135deg, #1a1a2e 0%, #16213e 25%, #0f3460 50%, #533483 100%);
             min-height: 100vh;
             padding: 20px;
+            position: relative;
         }
-        .container { max-width: 1400px; margin: 0 auto; }
+        /* Automotive accent - racing stripe on left edge */
+        body::before {
+            content: '';
+            position: fixed;
+            left: 0;
+            top: 0;
+            bottom: 0;
+            width: 4px;
+            background: linear-gradient(180deg, #ff6b35 0%, #f7931e 25%, #ffd700 50%, #f7931e 75%, #ff6b35 100%);
+            box-shadow: 0 0 10px rgba(255,107,53,0.5);
+            z-index: 1;
+        }
+        .container { max-width: 1400px; margin: 0 auto; position: relative; z-index: 2; }
         .header {
-            background: white;
+            background: linear-gradient(135deg, rgba(255,255,255,0.98) 0%, rgba(255,255,255,0.95) 100%);
+            backdrop-filter: blur(10px);
             padding: 20px 30px;
             border-radius: 10px;
-            box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+            box-shadow: 0 8px 16px rgba(0,0,0,0.2), 0 0 1px rgba(255,107,53,0.3);
             margin-bottom: 30px;
             display: flex;
             justify-content: space-between;
             align-items: center;
+            border-left: 4px solid #ff6b35;
         }
-        .header h1 { color: #667eea; font-size: 28px; }
+        .header h1 {
+            color: #16213e;
+            font-size: 28px;
+            text-shadow: 0 1px 2px rgba(0,0,0,0.1);
+        }
         .stats {
             display: grid;
             grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
@@ -255,24 +298,34 @@ class GarageRequestHandler(http.server.SimpleHTTPRequestHandler):
             margin-bottom: 30px;
         }
         .stat-card {
-            background: white;
+            background: linear-gradient(135deg, rgba(255,255,255,0.98) 0%, rgba(255,255,255,0.95) 100%);
+            backdrop-filter: blur(10px);
             padding: 25px;
             border-radius: 10px;
-            box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+            box-shadow: 0 8px 16px rgba(0,0,0,0.2);
+            border-left: 4px solid #ff6b35;
+            transition: transform 0.3s, box-shadow 0.3s;
         }
-        .stat-card h3 { color: #666; font-size: 14px; margin-bottom: 10px; }
-        .stat-card .value { font-size: 36px; font-weight: bold; color: #667eea; }
+        .stat-card:hover {
+            transform: translateY(-4px);
+            box-shadow: 0 12px 20px rgba(0,0,0,0.3);
+        }
+        .stat-card h3 { color: #666; font-size: 14px; margin-bottom: 10px; text-transform: uppercase; letter-spacing: 0.5px; }
+        .stat-card .value { font-size: 36px; font-weight: bold; color: #ff6b35; }
         .content {
-            background: white;
+            background: linear-gradient(135deg, rgba(255,255,255,0.98) 0%, rgba(255,255,255,0.95) 100%);
+            backdrop-filter: blur(10px);
             padding: 30px;
             border-radius: 10px;
-            box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+            box-shadow: 0 8px 16px rgba(0,0,0,0.2);
         }
         .tabs {
             display: flex;
             gap: 10px;
             margin-bottom: 30px;
             border-bottom: 2px solid #eee;
+            overflow-x: auto;
+            -webkit-overflow-scrolling: touch;
         }
         .tab {
             padding: 12px 24px;
@@ -283,17 +336,27 @@ class GarageRequestHandler(http.server.SimpleHTTPRequestHandler):
             color: #666;
             border-bottom: 3px solid transparent;
             transition: all 0.3s;
+            white-space: nowrap;
         }
         .tab.active {
-            color: #667eea;
-            border-bottom-color: #667eea;
+            color: #ff6b35;
+            border-bottom-color: #ff6b35;
+        }
+        .tab:hover {
+            color: #ff6b35;
+            background: rgba(255,107,53,0.05);
         }
         .tab-content { display: none; }
         .tab-content.active { display: block; }
+        .table-wrapper {
+            overflow-x: auto;
+            -webkit-overflow-scrolling: touch;
+        }
         table {
             width: 100%;
             border-collapse: collapse;
             margin-top: 20px;
+            min-width: 600px;
         }
         th, td {
             padding: 12px;
@@ -301,11 +364,12 @@ class GarageRequestHandler(http.server.SimpleHTTPRequestHandler):
             border-bottom: 1px solid #eee;
         }
         th {
-            background: #f8f9fa;
+            background: linear-gradient(135deg, #f8f9fa 0%, #e9ecef 100%);
             font-weight: 600;
             color: #333;
+            white-space: nowrap;
         }
-        tr:hover { background: #f8f9fa; }
+        tr:hover { background: rgba(255,107,53,0.05); }
         .btn {
             padding: 10px 20px;
             border: none;
@@ -313,19 +377,33 @@ class GarageRequestHandler(http.server.SimpleHTTPRequestHandler):
             cursor: pointer;
             font-size: 14px;
             transition: all 0.3s;
+            font-weight: 500;
         }
         .btn-primary {
-            background: #667eea;
+            background: linear-gradient(135deg, #ff6b35 0%, #f7931e 100%);
             color: white;
+            box-shadow: 0 4px 8px rgba(255,107,53,0.3);
         }
-        .btn-primary:hover { background: #5568d3; }
+        .btn-primary:hover {
+            background: linear-gradient(135deg, #e55a24 0%, #e6820d 100%);
+            box-shadow: 0 6px 12px rgba(255,107,53,0.4);
+            transform: translateY(-2px);
+        }
         .btn-success {
             background: #27ae60;
             color: white;
         }
+        .btn-success:hover {
+            background: #229954;
+            transform: translateY(-2px);
+        }
         .btn-danger {
             background: #e74c3c;
             color: white;
+        }
+        .btn-danger:hover {
+            background: #c0392b;
+            transform: translateY(-2px);
         }
         .btn-sm { padding: 6px 12px; font-size: 12px; margin: 0 2px; }
         .status-badge {
@@ -344,7 +422,7 @@ class GarageRequestHandler(http.server.SimpleHTTPRequestHandler):
             left: 0;
             width: 100%;
             height: 100%;
-            background: rgba(0,0,0,0.5);
+            background: rgba(0,0,0,0.7);
             justify-content: center;
             align-items: center;
             z-index: 1000;
@@ -358,8 +436,9 @@ class GarageRequestHandler(http.server.SimpleHTTPRequestHandler):
             width: 90%;
             max-height: 90vh;
             overflow-y: auto;
+            box-shadow: 0 12px 24px rgba(0,0,0,0.3);
         }
-        .modal-content h2 { margin-bottom: 20px; color: #667eea; }
+        .modal-content h2 { margin-bottom: 20px; color: #ff6b35; }
         .form-group {
             margin-bottom: 15px;
         }
@@ -377,6 +456,14 @@ class GarageRequestHandler(http.server.SimpleHTTPRequestHandler):
             border: 1px solid #ddd;
             border-radius: 5px;
             font-size: 14px;
+            transition: border-color 0.3s;
+        }
+        .form-group input:focus,
+        .form-group select:focus,
+        .form-group textarea:focus {
+            outline: none;
+            border-color: #ff6b35;
+            box-shadow: 0 0 0 3px rgba(255,107,53,0.1);
         }
         .form-group textarea { min-height: 100px; }
         .form-actions {
@@ -384,21 +471,165 @@ class GarageRequestHandler(http.server.SimpleHTTPRequestHandler):
             gap: 10px;
             justify-content: flex-end;
             margin-top: 20px;
+            flex-wrap: wrap;
         }
         .login-container {
             max-width: 400px;
             margin: 100px auto;
-            background: white;
+            background: linear-gradient(135deg, rgba(255,255,255,0.98) 0%, rgba(255,255,255,0.95) 100%);
+            backdrop-filter: blur(10px);
             padding: 40px;
             border-radius: 10px;
-            box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+            box-shadow: 0 12px 24px rgba(0,0,0,0.3);
+            border-left: 4px solid #ff6b35;
         }
         .login-container h2 {
-            color: #667eea;
+            color: #16213e;
             margin-bottom: 30px;
             text-align: center;
         }
         .hidden { display: none !important; }
+
+        /* Mobile Responsiveness - Tablets */
+        @media (max-width: 1024px) {
+            .container { padding: 0 10px; }
+            .stats {
+                grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+                gap: 15px;
+            }
+            .header h1 { font-size: 24px; }
+        }
+
+        /* Mobile Responsiveness - Small Tablets & Large Phones */
+        @media (max-width: 768px) {
+            body { padding: 15px; }
+            body::before { width: 3px; }
+
+            .header {
+                flex-direction: column;
+                gap: 15px;
+                padding: 20px;
+                text-align: center;
+            }
+            .header h1 { font-size: 22px; }
+
+            .stats {
+                grid-template-columns: 1fr;
+                gap: 15px;
+            }
+
+            .stat-card {
+                padding: 20px;
+            }
+            .stat-card .value { font-size: 32px; }
+
+            .content { padding: 20px; }
+
+            .tabs {
+                gap: 5px;
+                margin-bottom: 20px;
+            }
+            .tab {
+                padding: 10px 16px;
+                font-size: 14px;
+            }
+
+            table { font-size: 14px; }
+            th, td { padding: 10px 8px; }
+
+            .modal-content {
+                padding: 20px;
+                width: 95%;
+            }
+
+            .login-container {
+                margin: 50px auto;
+                padding: 30px;
+                width: 90%;
+            }
+        }
+
+        /* Mobile Responsiveness - Phones */
+        @media (max-width: 480px) {
+            body { padding: 10px; }
+            body::before { width: 2px; }
+
+            .header {
+                padding: 15px;
+                border-radius: 8px;
+            }
+            .header h1 { font-size: 18px; }
+            .header button { width: 100%; }
+
+            .stats {
+                margin-bottom: 20px;
+            }
+
+            .stat-card {
+                padding: 15px;
+            }
+            .stat-card h3 { font-size: 12px; }
+            .stat-card .value { font-size: 28px; }
+
+            .content {
+                padding: 15px;
+                border-radius: 8px;
+            }
+
+            .tabs {
+                gap: 3px;
+                margin-bottom: 15px;
+            }
+            .tab {
+                padding: 8px 12px;
+                font-size: 13px;
+            }
+
+            table {
+                font-size: 12px;
+                min-width: 500px;
+            }
+            th, td {
+                padding: 8px 6px;
+                font-size: 12px;
+            }
+
+            .btn {
+                padding: 8px 16px;
+                font-size: 13px;
+            }
+            .btn-sm {
+                padding: 5px 10px;
+                font-size: 11px;
+            }
+
+            .form-actions {
+                flex-direction: column;
+            }
+            .form-actions .btn {
+                width: 100%;
+            }
+
+            .modal-content {
+                padding: 15px;
+                border-radius: 8px;
+            }
+            .modal-content h2 { font-size: 20px; }
+
+            .login-container {
+                margin: 30px auto;
+                padding: 20px;
+                border-radius: 8px;
+            }
+            .login-container h2 { font-size: 20px; }
+        }
+
+        /* Extra small devices */
+        @media (max-width: 360px) {
+            .header h1 { font-size: 16px; }
+            .stat-card .value { font-size: 24px; }
+            table { min-width: 450px; }
+        }
     </style>
 </head>
 <body>
@@ -434,53 +665,59 @@ class GarageRequestHandler(http.server.SimpleHTTPRequestHandler):
 
             <div id="customersTab" class="tab-content active">
                 <button class="btn btn-primary" onclick="showAddCustomer()">+ Add Customer</button>
-                <table>
-                    <thead>
-                        <tr>
-                            <th>Name</th>
-                            <th>Email</th>
-                            <th>Phone</th>
-                            <th>Address</th>
-                            <th>Actions</th>
-                        </tr>
-                    </thead>
-                    <tbody id="customersTable"></tbody>
-                </table>
+                <div class="table-wrapper">
+                    <table>
+                        <thead>
+                            <tr>
+                                <th>Name</th>
+                                <th>Email</th>
+                                <th>Phone</th>
+                                <th>Address</th>
+                                <th>Actions</th>
+                            </tr>
+                        </thead>
+                        <tbody id="customersTable"></tbody>
+                    </table>
+                </div>
             </div>
 
             <div id="vehiclesTab" class="tab-content">
                 <button class="btn btn-primary" onclick="showAddVehicle()">+ Add Vehicle</button>
-                <table>
-                    <thead>
-                        <tr>
-                            <th>Owner</th>
-                            <th>Make/Model</th>
-                            <th>Year</th>
-                            <th>License Plate</th>
-                            <th>Color</th>
-                            <th>Actions</th>
-                        </tr>
-                    </thead>
-                    <tbody id="vehiclesTable"></tbody>
-                </table>
+                <div class="table-wrapper">
+                    <table>
+                        <thead>
+                            <tr>
+                                <th>Owner</th>
+                                <th>Make/Model</th>
+                                <th>Year</th>
+                                <th>License Plate</th>
+                                <th>Color</th>
+                                <th>Actions</th>
+                            </tr>
+                        </thead>
+                        <tbody id="vehiclesTable"></tbody>
+                    </table>
+                </div>
             </div>
 
             <div id="servicesTab" class="tab-content">
                 <button class="btn btn-primary" onclick="showAddService()">+ Add Service</button>
-                <table>
-                    <thead>
-                        <tr>
-                            <th>Vehicle</th>
-                            <th>Service Type</th>
-                            <th>Cost</th>
-                            <th>Status</th>
-                            <th>Technician</th>
-                            <th>Date</th>
-                            <th>Actions</th>
-                        </tr>
-                    </thead>
-                    <tbody id="servicesTable"></tbody>
-                </table>
+                <div class="table-wrapper">
+                    <table>
+                        <thead>
+                            <tr>
+                                <th>Vehicle</th>
+                                <th>Service Type</th>
+                                <th>Cost</th>
+                                <th>Status</th>
+                                <th>Technician</th>
+                                <th>Date</th>
+                                <th>Actions</th>
+                            </tr>
+                        </thead>
+                        <tbody id="servicesTable"></tbody>
+                    </table>
+                </div>
             </div>
         </div>
     </div>
