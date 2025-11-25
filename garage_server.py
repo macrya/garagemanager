@@ -813,7 +813,7 @@ class GarageRequestHandler(http.server.SimpleHTTPRequestHandler):
                 </div>
                 <div class="stat-card">
                     <h3>Total Revenue</h3>
-                    <div class="value">$${stats.total_revenue.toFixed(2)}</div>
+                    <div class="value">KSh ${stats.total_revenue.toFixed(2)}</div>
                 </div>
             `;
         }
@@ -854,7 +854,7 @@ class GarageRequestHandler(http.server.SimpleHTTPRequestHandler):
                 <tr>
                     <td>${s.vehicle_info}</td>
                     <td>${s.service_type}</td>
-                    <td>$${s.cost.toFixed(2)}</td>
+                    <td>KSh ${s.cost.toFixed(2)}</td>
                     <td><span class="status-badge status-${s.status}">${s.status.replace('_', ' ')}</span></td>
                     <td>${s.technician || 'Unassigned'}</td>
                     <td>${new Date(s.service_date).toLocaleDateString()}</td>
