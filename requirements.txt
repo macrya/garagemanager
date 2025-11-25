@@ -1,6 +1,7 @@
 # Garage Management System - Requirements
-# This application uses only Python standard library modules
-# No external dependencies are required
+
+# Production WSGI server
+gunicorn>=20.1.0
 
 # Python version: 3.6+
 #
@@ -16,5 +17,5 @@
 # - os (operating system interface)
 # - mimetypes (MIME type handling)
 #
-# To run this application, simply ensure you have Python 3.6 or higher installed:
+# To run this application locally:
 #   python3 garage_server.py
