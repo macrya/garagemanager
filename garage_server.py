@@ -16,7 +16,7 @@ import os
 import mimetypes
 
 PORT = int(os.environ.get('PORT', 5000))
-DB_FILE = 'garage_management.db'
+DB_FILE = os.environ.get('DB_FILE', 'garage_management.db')
 
 # Initialize database
 def init_database():
@@ -358,6 +358,8 @@ class GarageRequestHandler(http.server.SimpleHTTPRequestHandler):
             self.serve_frontend()
         elif self.path == '/customer':
             self.serve_customer_portal()
+        elif self.path == '/health':
+            self.handle_health_check()
         elif self.path.startswith('/api/dashboard'):
             self.handle_dashboard()
         elif self.path.startswith('/api/customers'):
@@ -3170,6 +3172,30 @@ class GarageRequestHandler(http.server.SimpleHTTPRequestHandler):
     def handle_dashboard(self):
         self.handle_stats()
 
+    def handle_health_check(self):
+        """Health check endpoint for Render and monitoring"""
+        try:
+            # Check database connectivity
+            conn = sqlite3.connect(DB_FILE)
+            cursor = conn.cursor()
+            cursor.execute('SELECT 1')
+            cursor.fetchone()
+            conn.close()
+
+            self.send_json_response({
+                'status': 'healthy',
+                'service': 'garage-management-system',
+                'database': 'connected',
+                'timestamp': datetime.now().isoformat()
+            })
+        except Exception as e:
+            self.send_json_response({
+                'status': 'unhealthy',
+                'service': 'garage-management-system',
+                'error': str(e),
+                'timestamp': datetime.now().isoformat()
+            }, 503)
+
     def send_json_response(self, data, status=200):
         self.send_response(status)
         self.send_header('Content-type', 'application/json')
@@ -3185,14 +3211,32 @@ if __name__ == '__main__':
     print("=" * 60)
     print("🔧 GARAGE MANAGEMENT SYSTEM")
     print("=" * 60)
+
+    # Environment detection
+    is_render = os.environ.get('RENDER') == 'true'
+
     print(f"\n📊 Initializing database...")
+    print(f"   Database: {DB_FILE}")
+    if is_render:
+        print(f"   ⚠️  Running on Render - using ephemeral storage")
+        print(f"   💡 Data persists during restarts but not rebuilds")
     init_database()
-    print(f"\n🚀 Starting server on http://localhost:{PORT}")
+
+    print(f"\n🚀 Starting server on port {PORT}")
+    if is_render:
+        print(f"   🌐 Render URL: https://<your-app>.onrender.com")
+        print(f"   ✅ Health check: /health")
+    else:
+        print(f"   🌐 Local URL: http://localhost:{PORT}")
+
     print(f"\n🔐 Default Login:")
     print(f"   Username: admin")
     print(f"   Password: admin123")
-    print(f"\n🌐 Open your browser and navigate to:")
-    print(f"   http://localhost:{PORT}")
+
+    if not is_render:
+        print(f"\n🌐 Open your browser and navigate to:")
+        print(f"   http://localhost:{PORT}")
+
     print("\n✅ Server is running... Press Ctrl+C to stop\n")
     print("=" * 60 + "\n")
 
