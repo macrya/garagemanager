@@ -396,6 +396,8 @@ class GarageRequestHandler(http.server.SimpleHTTPRequestHandler):
 
         if self.path == '/api/login':
             self.handle_login(data)
+        elif self.path == '/api/register':
+            self.handle_register(data)
         elif self.path == '/api/customer-login':
             self.handle_customer_login(data)
         elif self.path == '/api/customer-register':
@@ -902,6 +904,44 @@ class GarageRequestHandler(http.server.SimpleHTTPRequestHandler):
             </div>
             <button type="submit" class="btn btn-primary" style="width: 100%">Login</button>
         </form>
+        <p style="margin-top: 20px; text-align: center;">
+            Don't have an account? <a href="#" onclick="showStaffRegister(); return false;" style="color: #ff6b35;">Register here</a>
+        </p>
+        <p style="margin-top: 10px; text-align: center;">
+            <a href="/customer" style="color: #666;">Customer Portal</a>
+        </p>
+    </div>
+
+    <div id="registerView" class="login-container hidden">
+        <h2>🔧 Create Staff Account</h2>
+        <p style="margin-bottom: 20px; color: #666;">Register for staff access</p>
+        <form id="registerForm">
+            <div class="form-group">
+                <label>Username *</label>
+                <input type="text" id="reg_username" required>
+                <small style="color: #666; font-size: 12px;">Unique username for login</small>
+            </div>
+            <div class="form-group">
+                <label>Password *</label>
+                <input type="password" id="reg_password" required>
+                <small style="color: #666; font-size: 12px;">Min 8 characters, must include uppercase, lowercase, and number</small>
+            </div>
+            <div class="form-group">
+                <label>Confirm Password *</label>
+                <input type="password" id="reg_confirm_password" required>
+            </div>
+            <div class="form-group">
+                <label>Role</label>
+                <select id="reg_role">
+                    <option value="staff">Staff</option>
+                    <option value="admin">Admin</option>
+                </select>
+            </div>
+            <button type="submit" class="btn btn-primary" style="width: 100%">Register</button>
+        </form>
+        <p style="margin-top: 20px; text-align: center;">
+            Already have an account? <a href="#" onclick="showStaffLogin(); return false;" style="color: #ff6b35;">Login here</a>
+        </p>
     </div>
 
     <div id="mainView" class="container hidden">
@@ -1109,9 +1149,68 @@ class GarageRequestHandler(http.server.SimpleHTTPRequestHandler):
                 document.getElementById('mainView').classList.remove('hidden');
                 loadData();
             } else {
-                alert('Login failed');
+                alert(result.message || 'Login failed');
             }
         });
+
+        document.getElementById('registerForm').addEventListener('submit', async (e) => {
+            e.preventDefault();
+
+            const username = document.getElementById('reg_username').value.trim();
+            const password = document.getElementById('reg_password').value;
+            const confirmPassword = document.getElementById('reg_confirm_password').value;
+            const role = document.getElementById('reg_role').value;
+
+            // Client-side validation
+            if (password !== confirmPassword) {
+                alert('Passwords do not match');
+                return;
+            }
+
+            // Validate password strength
+            if (password.length < 8) {
+                alert('Password must be at least 8 characters long');
+                return;
+            }
+            if (!/[A-Z]/.test(password)) {
+                alert('Password must contain at least one uppercase letter');
+                return;
+            }
+            if (!/[a-z]/.test(password)) {
+                alert('Password must contain at least one lowercase letter');
+                return;
+            }
+            if (!/\d/.test(password)) {
+                alert('Password must contain at least one number');
+                return;
+            }
+
+            const result = await api('/api/register', {
+                method: 'POST',
+                body: JSON.stringify({ username, password, role })
+            });
+
+            if (result && result.success) {
+                alert(result.message || 'Registration successful! Please login with your credentials.');
+                showStaffLogin();
+                // Clear form
+                document.getElementById('registerForm').reset();
+                // Pre-fill login username
+                document.getElementById('username').value = username;
+            } else {
+                alert(result.message || 'Registration failed');
+            }
+        });
+
+        function showStaffRegister() {
+            document.getElementById('loginView').classList.add('hidden');
+            document.getElementById('registerView').classList.remove('hidden');
+        }
+
+        function showStaffLogin() {
+            document.getElementById('registerView').classList.add('hidden');
+            document.getElementById('loginView').classList.remove('hidden');
+        }
 
         function logout() {
             localStorage.removeItem('token');
@@ -1786,6 +1885,74 @@ class GarageRequestHandler(http.server.SimpleHTTPRequestHandler):
             self.send_json_response({'success': True, 'token': token})
         else:
             self.send_json_response({'success': False, 'message': 'Invalid credentials'}, 401)
+
+    def handle_register(self, data):
+        import re
+
+        # Validate required fields
+        username = data.get('username', '').strip()
+        password = data.get('password', '')
+        role = data.get('role', 'staff')
+
+        if not username or not password:
+            self.send_json_response({'success': False, 'message': 'Username and password are required'}, 400)
+            return
+
+        # Validate username (alphanumeric and underscore only)
+        if not re.match(r'^[a-zA-Z0-9_]+$', username):
+            self.send_json_response({'success': False, 'message': 'Username can only contain letters, numbers, and underscores'}, 400)
+            return
+
+        # Validate password strength (min 8 chars, has uppercase, lowercase, and number)
+        if len(password) < 8:
+            self.send_json_response({'success': False, 'message': 'Password must be at least 8 characters long'}, 400)
+            return
+        if not re.search(r'[A-Z]', password):
+            self.send_json_response({'success': False, 'message': 'Password must contain at least one uppercase letter'}, 400)
+            return
+        if not re.search(r'[a-z]', password):
+            self.send_json_response({'success': False, 'message': 'Password must contain at least one lowercase letter'}, 400)
+            return
+        if not re.search(r'\d', password):
+            self.send_json_response({'success': False, 'message': 'Password must contain at least one number'}, 400)
+            return
+
+        # Validate role
+        if role not in ['staff', 'admin']:
+            role = 'staff'
+
+        try:
+            conn = sqlite3.connect(DB_FILE)
+            cursor = conn.cursor()
+
+            # Check if username already exists
+            cursor.execute('SELECT id FROM users WHERE username = ?', (username,))
+            if cursor.fetchone():
+                conn.close()
+                self.send_json_response({'success': False, 'message': 'Username already exists'}, 400)
+                return
+
+            # Hash password
+            password_hash = hashlib.sha256(password.encode()).hexdigest()
+
+            # Create user record
+            cursor.execute('''
+                INSERT INTO users (username, password_hash, role)
+                VALUES (?, ?, ?)
+            ''', (username, password_hash, role))
+
+            user_id = cursor.lastrowid
+            conn.commit()
+            conn.close()
+
+            self.send_json_response({
+                'success': True,
+                'user_id': user_id,
+                'message': 'Registration successful! Please login with your credentials.'
+            })
+
+        except Exception as e:
+            self.send_json_response({'success': False, 'message': str(e)}, 400)
 
     def handle_stats(self):
         conn = sqlite3.connect(DB_FILE)
