@@ -93,6 +93,8 @@ def init_database():
             customer_id INTEGER NOT NULL,
             email TEXT UNIQUE NOT NULL,
             password_hash TEXT NOT NULL,
+            status TEXT DEFAULT 'pending_verification',
+            verification_token TEXT,
             created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
             FOREIGN KEY (customer_id) REFERENCES customers(id) ON DELETE CASCADE
         )
@@ -182,6 +184,14 @@ def init_database():
             FOREIGN KEY (assigned_technician_id) REFERENCES technicians(id) ON DELETE SET NULL
         )
     ''')
+
+    # Migration: Add status and verification_token columns to existing customer_users table
+    cursor.execute("PRAGMA table_info(customer_users)")
+    columns = [column[1] for column in cursor.fetchall()]
+    if 'status' not in columns:
+        cursor.execute('ALTER TABLE customer_users ADD COLUMN status TEXT DEFAULT "pending_verification"')
+    if 'verification_token' not in columns:
+        cursor.execute('ALTER TABLE customer_users ADD COLUMN verification_token TEXT')
 
     # Add sample data if database is empty
     cursor.execute('SELECT COUNT(*) FROM customers')
@@ -388,6 +398,8 @@ class GarageRequestHandler(http.server.SimpleHTTPRequestHandler):
             self.handle_login(data)
         elif self.path == '/api/customer-login':
             self.handle_customer_login(data)
+        elif self.path == '/api/customer-register':
+            self.handle_customer_register(data)
         elif self.path == '/api/customers':
             self.handle_add_customer(data)
         elif self.path == '/api/vehicles':
@@ -1974,7 +1986,7 @@ class GarageRequestHandler(http.server.SimpleHTTPRequestHandler):
         conn = sqlite3.connect(DB_FILE)
         cursor = conn.cursor()
         cursor.execute('''
-            SELECT cu.customer_id, c.name
+            SELECT cu.customer_id, c.name, cu.status
             FROM customer_users cu
             JOIN customers c ON cu.customer_id = c.id
             WHERE cu.email = ? AND cu.password_hash = ?
@@ -1983,10 +1995,99 @@ class GarageRequestHandler(http.server.SimpleHTTPRequestHandler):
         conn.close()
 
         if customer:
-            token = create_customer_session(customer[0])
-            self.send_json_response({'success': True, 'token': token, 'name': customer[1]})
+            # Check if account is active
+            if customer[2] == 'suspended':
+                self.send_json_response({'success': False, 'message': 'Account suspended. Please contact support.'}, 403)
+            else:
+                token = create_customer_session(customer[0])
+                self.send_json_response({'success': True, 'token': token, 'name': customer[1]})
         else:
             self.send_json_response({'success': False, 'message': 'Invalid credentials'}, 401)
+
+    def handle_customer_register(self, data):
+        import re
+
+        # Validate required fields
+        email = data.get('email', '').strip()
+        password = data.get('password', '')
+        name = data.get('name', '').strip()
+        phone = data.get('phone', '').strip()
+
+        if not email or not password or not name:
+            self.send_json_response({'success': False, 'message': 'Email, password, and name are required'}, 400)
+            return
+
+        # Validate email format
+        email_pattern = r'^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$'
+        if not re.match(email_pattern, email):
+            self.send_json_response({'success': False, 'message': 'Invalid email format'}, 400)
+            return
+
+        # Validate password strength (min 8 chars, has uppercase, lowercase, and number)
+        if len(password) < 8:
+            self.send_json_response({'success': False, 'message': 'Password must be at least 8 characters long'}, 400)
+            return
+        if not re.search(r'[A-Z]', password):
+            self.send_json_response({'success': False, 'message': 'Password must contain at least one uppercase letter'}, 400)
+            return
+        if not re.search(r'[a-z]', password):
+            self.send_json_response({'success': False, 'message': 'Password must contain at least one lowercase letter'}, 400)
+            return
+        if not re.search(r'\d', password):
+            self.send_json_response({'success': False, 'message': 'Password must contain at least one number'}, 400)
+            return
+
+        try:
+            conn = sqlite3.connect(DB_FILE)
+            cursor = conn.cursor()
+
+            # Check if email already exists
+            cursor.execute('SELECT id FROM customer_users WHERE email = ?', (email,))
+            if cursor.fetchone():
+                conn.close()
+                self.send_json_response({'success': False, 'message': 'Email already registered'}, 400)
+                return
+
+            # Check if email exists in customers table
+            cursor.execute('SELECT id FROM customers WHERE email = ?', (email,))
+            existing_customer = cursor.fetchone()
+
+            if existing_customer:
+                customer_id = existing_customer[0]
+            else:
+                # Create customer record
+                cursor.execute('''
+                    INSERT INTO customers (name, email, phone, address)
+                    VALUES (?, ?, ?, ?)
+                ''', (name, email, phone, data.get('address', '')))
+                customer_id = cursor.lastrowid
+
+            # Hash password
+            password_hash = hashlib.sha256(password.encode()).hexdigest()
+
+            # Generate verification token
+            verification_token = secrets.token_urlsafe(32)
+
+            # Create customer_user record with pending_verification status
+            cursor.execute('''
+                INSERT INTO customer_users (customer_id, email, password_hash, status, verification_token)
+                VALUES (?, ?, ?, ?, ?)
+            ''', (customer_id, email, password_hash, 'pending_verification', verification_token))
+
+            user_id = cursor.lastrowid
+            conn.commit()
+            conn.close()
+
+            # In a real application, you would send a verification email here
+            # For now, we'll return success with the user_id and a message
+            self.send_json_response({
+                'success': True,
+                'user_id': user_id,
+                'message': 'Registration successful! Your account is pending verification.'
+            })
+
+        except Exception as e:
+            self.send_json_response({'success': False, 'message': str(e)}, 400)
 
     # Technician handlers
     def handle_get_technicians(self):
@@ -2483,7 +2584,46 @@ class GarageRequestHandler(http.server.SimpleHTTPRequestHandler):
             <button type="submit" class="btn btn-primary" style="width: 100%">Login</button>
         </form>
         <p style="margin-top: 20px; text-align: center;">
-            <a href="/" style="color: #ff6b35;">Staff Login</a>
+            Don't have an account? <a href="#" onclick="showRegister(); return false;" style="color: #ff6b35;">Register here</a>
+        </p>
+        <p style="margin-top: 10px; text-align: center;">
+            <a href="/" style="color: #666;">Staff Login</a>
+        </p>
+    </div>
+
+    <div id="registerView" class="login-container hidden">
+        <h2>Create Account</h2>
+        <p style="margin-bottom: 20px; color: #666;">Register to manage your vehicle services</p>
+        <form id="registerForm">
+            <div class="form-group">
+                <label>Full Name *</label>
+                <input type="text" id="reg_name" required>
+            </div>
+            <div class="form-group">
+                <label>Email *</label>
+                <input type="email" id="reg_email" required>
+            </div>
+            <div class="form-group">
+                <label>Phone</label>
+                <input type="tel" id="reg_phone">
+            </div>
+            <div class="form-group">
+                <label>Address</label>
+                <input type="text" id="reg_address">
+            </div>
+            <div class="form-group">
+                <label>Password *</label>
+                <input type="password" id="reg_password" required>
+                <small style="color: #666; font-size: 12px;">Min 8 characters, must include uppercase, lowercase, and number</small>
+            </div>
+            <div class="form-group">
+                <label>Confirm Password *</label>
+                <input type="password" id="reg_confirm_password" required>
+            </div>
+            <button type="submit" class="btn btn-primary" style="width: 100%">Register</button>
+        </form>
+        <p style="margin-top: 20px; text-align: center;">
+            Already have an account? <a href="#" onclick="showLogin(); return false;" style="color: #ff6b35;">Login here</a>
         </p>
     </div>
 
@@ -2613,9 +2753,70 @@ class GarageRequestHandler(http.server.SimpleHTTPRequestHandler):
                 document.getElementById('customerName').textContent = customerName;
                 loadData();
             } else {
-                alert('Login failed');
+                alert(result.message || 'Login failed');
             }
         });
+
+        document.getElementById('registerForm').addEventListener('submit', async (e) => {
+            e.preventDefault();
+
+            const name = document.getElementById('reg_name').value.trim();
+            const email = document.getElementById('reg_email').value.trim();
+            const phone = document.getElementById('reg_phone').value.trim();
+            const address = document.getElementById('reg_address').value.trim();
+            const password = document.getElementById('reg_password').value;
+            const confirmPassword = document.getElementById('reg_confirm_password').value;
+
+            // Client-side validation
+            if (password !== confirmPassword) {
+                alert('Passwords do not match');
+                return;
+            }
+
+            // Validate password strength
+            if (password.length < 8) {
+                alert('Password must be at least 8 characters long');
+                return;
+            }
+            if (!/[A-Z]/.test(password)) {
+                alert('Password must contain at least one uppercase letter');
+                return;
+            }
+            if (!/[a-z]/.test(password)) {
+                alert('Password must contain at least one lowercase letter');
+                return;
+            }
+            if (!/\d/.test(password)) {
+                alert('Password must contain at least one number');
+                return;
+            }
+
+            const result = await api('/api/customer-register', {
+                method: 'POST',
+                body: JSON.stringify({ name, email, phone, address, password })
+            });
+
+            if (result && result.success) {
+                alert(result.message || 'Registration successful! Please login with your credentials.');
+                showLogin();
+                // Clear form
+                document.getElementById('registerForm').reset();
+                // Pre-fill login email
+                document.getElementById('email').value = email;
+            } else {
+                alert(result.message || 'Registration failed');
+            }
+        });
+
+        function showRegister() {
+            document.getElementById('loginView').classList.add('hidden');
+            document.getElementById('registerView').classList.remove('hidden');
+        }
+
+        function showLogin() {
+            document.getElementById('registerView').classList.add('hidden');
+            document.getElementById('loginView').classList.remove('hidden');
+        }
 
         function logout() {
             localStorage.removeItem('customer_token');
