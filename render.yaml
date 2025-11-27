@@ -5,9 +5,9 @@ services:
     region: oregon
     plan: free
     branch: main
-    # No external dependencies required - empty build or minimal pip install
+    # No external dependencies required - uses Python standard library only
     buildCommand: pip install -r requirements.txt || true
-    # This is a standalone Python HTTP server - run directly with python3
+    # Standalone Python HTTP server - no external dependencies
     startCommand: python3 garage_server.py
     envVars:
       - key: PORT
@@ -15,4 +15,8 @@ services:
       - key: PYTHON_VERSION
         value: 3.11.0
     autoDeploy: true
-    healthCheckPath: /
+    # Health check endpoint
+    healthCheckPath: /health
+    # Note: SQLite database will be stored on ephemeral disk
+    # Data will persist during restarts but may be lost on rebuild/redeploy
+    # For production, consider using a managed database service
