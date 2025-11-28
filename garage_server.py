@@ -1790,14 +1790,399 @@ class GarageRequestHandler(http.server.SimpleHTTPRequestHandler):
             document.getElementById('modal').classList.add('active');
         }
 
-        // Edit functions (placeholders - can be implemented similarly to add functions)
-        function editCustomer(id) { alert('Edit customer functionality - coming soon'); }
-        function editVehicle(id) { alert('Edit vehicle functionality - coming soon'); }
-        function editService(id) { alert('Edit service functionality - coming soon'); }
-        function editBooking(id) { alert('Edit booking functionality - coming soon'); }
-        function editTechnician(id) { alert('Edit technician functionality - coming soon'); }
-        function editPart(id) { alert('Edit part functionality - coming soon'); }
-        function editCatalog(id) { alert('Edit catalog functionality - coming soon'); }
+        // Edit functions
+        function editCustomer(id) {
+            const customer = customers.find(c => c.id === id);
+            if (!customer) return;
+
+            document.getElementById('modalContent').innerHTML = `
+                <h2>Edit Customer</h2>
+                <form id="customerForm">
+                    <div class="form-group">
+                        <label>Name *</label>
+                        <input type="text" name="name" value="${customer.name}" required>
+                    </div>
+                    <div class="form-group">
+                        <label>Email *</label>
+                        <input type="email" name="email" value="${customer.email}" required>
+                    </div>
+                    <div class="form-group">
+                        <label>Phone *</label>
+                        <input type="tel" name="phone" value="${customer.phone}" required>
+                    </div>
+                    <div class="form-group">
+                        <label>Address</label>
+                        <input type="text" name="address" value="${customer.address || ''}">
+                    </div>
+                    <div class="form-actions">
+                        <button type="button" class="btn" onclick="closeModal()">Cancel</button>
+                        <button type="submit" class="btn btn-primary">Update Customer</button>
+                    </div>
+                </form>
+            `;
+            document.getElementById('customerForm').addEventListener('submit', async (e) => {
+                e.preventDefault();
+                const formData = new FormData(e.target);
+                const data = Object.fromEntries(formData);
+                const result = await api(`/api/customers/${id}`, {
+                    method: 'PUT',
+                    body: JSON.stringify(data)
+                });
+                if (result && result.success) {
+                    closeModal();
+                    loadData();
+                }
+            });
+            document.getElementById('modal').classList.add('active');
+        }
+
+        function editVehicle(id) {
+            const vehicle = vehicles.find(v => v.id === id);
+            if (!vehicle) return;
+
+            document.getElementById('modalContent').innerHTML = `
+                <h2>Edit Vehicle</h2>
+                <form id="vehicleForm">
+                    <div class="form-group">
+                        <label>Customer *</label>
+                        <select name="customer_id" required>
+                            ${customers.map(c => `<option value="${c.id}" ${c.id === vehicle.customer_id ? 'selected' : ''}>${c.name}</option>`).join('')}
+                        </select>
+                    </div>
+                    <div class="form-group">
+                        <label>Make *</label>
+                        <input type="text" name="make" value="${vehicle.make}" required>
+                    </div>
+                    <div class="form-group">
+                        <label>Model *</label>
+                        <input type="text" name="model" value="${vehicle.model}" required>
+                    </div>
+                    <div class="form-group">
+                        <label>Year *</label>
+                        <input type="number" name="year" value="${vehicle.year}" required min="1900" max="2100">
+                    </div>
+                    <div class="form-group">
+                        <label>License Plate *</label>
+                        <input type="text" name="license_plate" value="${vehicle.license_plate}" required>
+                    </div>
+                    <div class="form-group">
+                        <label>VIN</label>
+                        <input type="text" name="vin" value="${vehicle.vin || ''}">
+                    </div>
+                    <div class="form-group">
+                        <label>Color</label>
+                        <input type="text" name="color" value="${vehicle.color || ''}">
+                    </div>
+                    <div class="form-actions">
+                        <button type="button" class="btn" onclick="closeModal()">Cancel</button>
+                        <button type="submit" class="btn btn-primary">Update Vehicle</button>
+                    </div>
+                </form>
+            `;
+            document.getElementById('vehicleForm').addEventListener('submit', async (e) => {
+                e.preventDefault();
+                const formData = new FormData(e.target);
+                const data = Object.fromEntries(formData);
+                const result = await api(`/api/vehicles/${id}`, {
+                    method: 'PUT',
+                    body: JSON.stringify(data)
+                });
+                if (result && result.success) {
+                    closeModal();
+                    loadData();
+                }
+            });
+            document.getElementById('modal').classList.add('active');
+        }
+
+        function editService(id) {
+            const service = services.find(s => s.id === id);
+            if (!service) return;
+
+            document.getElementById('modalContent').innerHTML = `
+                <h2>Edit Service</h2>
+                <form id="serviceForm">
+                    <div class="form-group">
+                        <label>Vehicle *</label>
+                        <select name="vehicle_id" required>
+                            ${vehicles.map(v => `<option value="${v.id}" ${v.id === service.vehicle_id ? 'selected' : ''}>${v.make} ${v.model} (${v.license_plate})</option>`).join('')}
+                        </select>
+                    </div>
+                    <div class="form-group">
+                        <label>Service Type *</label>
+                        <input type="text" name="service_type" value="${service.service_type}" required>
+                    </div>
+                    <div class="form-group">
+                        <label>Description</label>
+                        <textarea name="description" rows="3">${service.description || ''}</textarea>
+                    </div>
+                    <div class="form-group">
+                        <label>Cost (KSh) *</label>
+                        <input type="number" name="cost" value="${service.cost}" step="0.01" required>
+                    </div>
+                    <div class="form-group">
+                        <label>Status *</label>
+                        <select name="status" required>
+                            <option value="pending" ${service.status === 'pending' ? 'selected' : ''}>Pending</option>
+                            <option value="in_progress" ${service.status === 'in_progress' ? 'selected' : ''}>In Progress</option>
+                            <option value="completed" ${service.status === 'completed' ? 'selected' : ''}>Completed</option>
+                        </select>
+                    </div>
+                    <div class="form-group">
+                        <label>Technician</label>
+                        <input type="text" name="technician" value="${service.technician || ''}">
+                    </div>
+                    <div class="form-group">
+                        <label>Notes</label>
+                        <textarea name="notes" rows="2">${service.notes || ''}</textarea>
+                    </div>
+                    <div class="form-actions">
+                        <button type="button" class="btn" onclick="closeModal()">Cancel</button>
+                        <button type="submit" class="btn btn-primary">Update Service</button>
+                    </div>
+                </form>
+            `;
+            document.getElementById('serviceForm').addEventListener('submit', async (e) => {
+                e.preventDefault();
+                const formData = new FormData(e.target);
+                const data = Object.fromEntries(formData);
+                const result = await api(`/api/services/${id}`, {
+                    method: 'PUT',
+                    body: JSON.stringify(data)
+                });
+                if (result && result.success) {
+                    closeModal();
+                    loadData();
+                }
+            });
+            document.getElementById('modal').classList.add('active');
+        }
+
+        function editBooking(id) {
+            const booking = bookings.find(b => b.id === id);
+            if (!booking) return;
+
+            document.getElementById('modalContent').innerHTML = `
+                <h2>Edit Booking</h2>
+                <form id="bookingForm">
+                    <div class="form-group">
+                        <label>Vehicle *</label>
+                        <select name="vehicle_id" required>
+                            ${vehicles.map(v => `<option value="${v.id}" ${v.id === booking.vehicle_id ? 'selected' : ''}>${v.make} ${v.model} (${v.license_plate})</option>`).join('')}
+                        </select>
+                    </div>
+                    <div class="form-group">
+                        <label>Service *</label>
+                        <select name="service_catalog_id" required>
+                            ${catalog.map(s => `<option value="${s.id}" ${s.id === booking.service_catalog_id ? 'selected' : ''}>${s.service_name} - KSh ${s.base_price}</option>`).join('')}
+                        </select>
+                    </div>
+                    <div class="form-group">
+                        <label>Date *</label>
+                        <input type="date" name="booking_date" value="${booking.booking_date}" required>
+                    </div>
+                    <div class="form-group">
+                        <label>Time *</label>
+                        <input type="time" name="booking_time" value="${booking.booking_time}" required>
+                    </div>
+                    <div class="form-group">
+                        <label>Technician</label>
+                        <select name="assigned_technician_id">
+                            <option value="">Not assigned</option>
+                            ${technicians.map(t => `<option value="${t.id}" ${t.id === booking.assigned_technician_id ? 'selected' : ''}>${t.name}</option>`).join('')}
+                        </select>
+                    </div>
+                    <div class="form-group">
+                        <label>Status *</label>
+                        <select name="status" required>
+                            <option value="scheduled" ${booking.status === 'scheduled' ? 'selected' : ''}>Scheduled</option>
+                            <option value="completed" ${booking.status === 'completed' ? 'selected' : ''}>Completed</option>
+                            <option value="cancelled" ${booking.status === 'cancelled' ? 'selected' : ''}>Cancelled</option>
+                        </select>
+                    </div>
+                    <div class="form-group">
+                        <label>Notes</label>
+                        <textarea name="notes" rows="2">${booking.notes || ''}</textarea>
+                    </div>
+                    <div class="form-actions">
+                        <button type="button" class="btn" onclick="closeModal()">Cancel</button>
+                        <button type="submit" class="btn btn-primary">Update Booking</button>
+                    </div>
+                </form>
+            `;
+            document.getElementById('bookingForm').addEventListener('submit', async (e) => {
+                e.preventDefault();
+                const formData = new FormData(e.target);
+                const data = Object.fromEntries(formData);
+                const result = await api(`/api/bookings/${id}`, {
+                    method: 'PUT',
+                    body: JSON.stringify(data)
+                });
+                if (result && result.success) {
+                    closeModal();
+                    loadData();
+                }
+            });
+            document.getElementById('modal').classList.add('active');
+        }
+
+        function editTechnician(id) {
+            const tech = technicians.find(t => t.id === id);
+            if (!tech) return;
+
+            document.getElementById('modalContent').innerHTML = `
+                <h2>Edit Technician</h2>
+                <form id="technicianForm">
+                    <div class="form-group">
+                        <label>Name *</label>
+                        <input type="text" name="name" value="${tech.name}" required>
+                    </div>
+                    <div class="form-group">
+                        <label>Specialization</label>
+                        <input type="text" name="specialization" value="${tech.specialization || ''}">
+                    </div>
+                    <div class="form-group">
+                        <label>Phone</label>
+                        <input type="tel" name="phone" value="${tech.phone || ''}">
+                    </div>
+                    <div class="form-group">
+                        <label>Email</label>
+                        <input type="email" name="email" value="${tech.email || ''}">
+                    </div>
+                    <div class="form-group">
+                        <label>Status *</label>
+                        <select name="status" required>
+                            <option value="available" ${tech.status === 'available' ? 'selected' : ''}>Available</option>
+                            <option value="busy" ${tech.status === 'busy' ? 'selected' : ''}>Busy</option>
+                        </select>
+                    </div>
+                    <div class="form-actions">
+                        <button type="button" class="btn" onclick="closeModal()">Cancel</button>
+                        <button type="submit" class="btn btn-primary">Update Technician</button>
+                    </div>
+                </form>
+            `;
+            document.getElementById('technicianForm').addEventListener('submit', async (e) => {
+                e.preventDefault();
+                const formData = new FormData(e.target);
+                const data = Object.fromEntries(formData);
+                const result = await api(`/api/technicians/${id}`, {
+                    method: 'PUT',
+                    body: JSON.stringify(data)
+                });
+                if (result && result.success) {
+                    closeModal();
+                    loadData();
+                }
+            });
+            document.getElementById('modal').classList.add('active');
+        }
+
+        function editPart(id) {
+            const part = parts.find(p => p.id === id);
+            if (!part) return;
+
+            document.getElementById('modalContent').innerHTML = `
+                <h2>Edit Part</h2>
+                <form id="partForm">
+                    <div class="form-group">
+                        <label>Part Number *</label>
+                        <input type="text" name="part_number" value="${part.part_number}" required>
+                    </div>
+                    <div class="form-group">
+                        <label>Name *</label>
+                        <input type="text" name="name" value="${part.name}" required>
+                    </div>
+                    <div class="form-group">
+                        <label>Description</label>
+                        <textarea name="description" rows="2">${part.description || ''}</textarea>
+                    </div>
+                    <div class="form-group">
+                        <label>Quantity *</label>
+                        <input type="number" name="quantity" value="${part.quantity}" required min="0">
+                    </div>
+                    <div class="form-group">
+                        <label>Unit Price (KSh) *</label>
+                        <input type="number" name="unit_price" value="${part.unit_price}" step="0.01" required>
+                    </div>
+                    <div class="form-group">
+                        <label>Supplier</label>
+                        <input type="text" name="supplier" value="${part.supplier || ''}">
+                    </div>
+                    <div class="form-group">
+                        <label>Reorder Level *</label>
+                        <input type="number" name="reorder_level" value="${part.reorder_level}" required min="0">
+                    </div>
+                    <div class="form-actions">
+                        <button type="button" class="btn" onclick="closeModal()">Cancel</button>
+                        <button type="submit" class="btn btn-primary">Update Part</button>
+                    </div>
+                </form>
+            `;
+            document.getElementById('partForm').addEventListener('submit', async (e) => {
+                e.preventDefault();
+                const formData = new FormData(e.target);
+                const data = Object.fromEntries(formData);
+                const result = await api(`/api/parts/${id}`, {
+                    method: 'PUT',
+                    body: JSON.stringify(data)
+                });
+                if (result && result.success) {
+                    closeModal();
+                    loadData();
+                }
+            });
+            document.getElementById('modal').classList.add('active');
+        }
+
+        function editCatalog(id) {
+            const service = catalog.find(s => s.id === id);
+            if (!service) return;
+
+            document.getElementById('modalContent').innerHTML = `
+                <h2>Edit Service Catalog</h2>
+                <form id="catalogForm">
+                    <div class="form-group">
+                        <label>Service Name *</label>
+                        <input type="text" name="service_name" value="${service.service_name}" required>
+                    </div>
+                    <div class="form-group">
+                        <label>Description</label>
+                        <textarea name="description" rows="3">${service.description || ''}</textarea>
+                    </div>
+                    <div class="form-group">
+                        <label>Base Price (KSh) *</label>
+                        <input type="number" name="base_price" value="${service.base_price}" step="0.01" required>
+                    </div>
+                    <div class="form-group">
+                        <label>Estimated Duration (minutes) *</label>
+                        <input type="number" name="estimated_duration" value="${service.estimated_duration}" required min="1">
+                    </div>
+                    <div class="form-group">
+                        <label>Category</label>
+                        <input type="text" name="category" value="${service.category || ''}">
+                    </div>
+                    <div class="form-actions">
+                        <button type="button" class="btn" onclick="closeModal()">Cancel</button>
+                        <button type="submit" class="btn btn-primary">Update Service</button>
+                    </div>
+                </form>
+            `;
+            document.getElementById('catalogForm').addEventListener('submit', async (e) => {
+                e.preventDefault();
+                const formData = new FormData(e.target);
+                const data = Object.fromEntries(formData);
+                const result = await api(`/api/service-catalog/${id}`, {
+                    method: 'PUT',
+                    body: JSON.stringify(data)
+                });
+                if (result && result.success) {
+                    closeModal();
+                    loadData();
+                }
+            });
+            document.getElementById('modal').classList.add('active');
+        }
 
         // Delete functions for new features
         async function deleteBooking(id) {
