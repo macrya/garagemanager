@@ -196,8 +196,8 @@ def init_database():
     # Add sample data if database is empty
     cursor.execute('SELECT COUNT(*) FROM customers')
     if cursor.fetchone()[0] == 0:
-        # Add admin user
-        password_hash = hashlib.sha256('admin123'.encode()).hexdigest()
+        # Add admin user with PBKDF2 hashed password
+        password_hash = hash_password('admin123')
         cursor.execute('INSERT INTO users (username, password_hash, role) VALUES (?, ?, ?)',
                       ('admin', password_hash, 'admin'))
 
@@ -257,12 +257,12 @@ def init_database():
             ('AC System Check', 'Air conditioning inspection and recharge', 110.00, 60, 'Climate Control')
         ''')
 
-        # Add sample customer user accounts
-        password_hash = hashlib.sha256('customer123'.encode()).hexdigest()
-        cursor.execute('''INSERT INTO customer_users (customer_id, email, password_hash) VALUES
-            (1, 'john.smith@email.com', ?),
-            (2, 'sarah.j@email.com', ?),
-            (3, 'mike.w@email.com', ?)
+        # Add sample customer user accounts with PBKDF2 hashed passwords
+        password_hash = hash_password('customer123')
+        cursor.execute('''INSERT INTO customer_users (customer_id, email, password_hash, status) VALUES
+            (1, 'john.smith@email.com', ?, 'active'),
+            (2, 'sarah.j@email.com', ?, 'active'),
+            (3, 'mike.w@email.com', ?, 'active')
         ''', (password_hash, password_hash, password_hash))
 
         # Add sample bookings
@@ -330,6 +330,32 @@ def verify_customer_session(token):
     conn.close()
     return {'id': customer[0], 'name': customer[1], 'email': customer[2]} if customer else None
 
+def cleanup_expired_sessions():
+    """Clean up expired sessions from the database"""
+    try:
+        conn = sqlite3.connect(DB_FILE)
+        cursor = conn.cursor()
+        now = datetime.now().isoformat()
+
+        # Delete expired admin sessions
+        cursor.execute('DELETE FROM sessions WHERE expires_at < ?', (now,))
+        admin_deleted = cursor.rowcount
+
+        # Delete expired customer sessions
+        cursor.execute('DELETE FROM customer_sessions WHERE expires_at < ?', (now,))
+        customer_deleted = cursor.rowcount
+
+        conn.commit()
+        conn.close()
+
+        if admin_deleted > 0 or customer_deleted > 0:
+            print(f"🧹 Cleaned up {admin_deleted} admin and {customer_deleted} customer expired sessions")
+
+        return admin_deleted + customer_deleted
+    except Exception as e:
+        print(f"❌ Error cleaning up sessions: {e}")
+        return 0
+
 # Automatic technician assignment
 def assign_technician():
     """Automatically assign a technician based on current workload and availability"""
@@ -384,6 +410,8 @@ class GarageRequestHandler(http.server.SimpleHTTPRequestHandler):
             self.handle_customer_bookings()
         elif self.path.startswith('/api/cost-calculator'):
             self.handle_cost_calculator()
+        elif self.path == '/health' or self.path == '/api/health':
+            self.handle_health_check()
         else:
             self.send_error(404, 'Not Found')
 
@@ -1810,14 +1838,399 @@ class GarageRequestHandler(http.server.SimpleHTTPRequestHandler):
             document.getElementById('modal').classList.add('active');
         }
 
-        // Edit functions (placeholders - can be implemented similarly to add functions)
-        function editCustomer(id) { alert('Edit customer functionality - coming soon'); }
-        function editVehicle(id) { alert('Edit vehicle functionality - coming soon'); }
-        function editService(id) { alert('Edit service functionality - coming soon'); }
-        function editBooking(id) { alert('Edit booking functionality - coming soon'); }
-        function editTechnician(id) { alert('Edit technician functionality - coming soon'); }
-        function editPart(id) { alert('Edit part functionality - coming soon'); }
-        function editCatalog(id) { alert('Edit catalog functionality - coming soon'); }
+        // Edit functions
+        function editCustomer(id) {
+            const customer = customers.find(c => c.id === id);
+            if (!customer) return;
+
+            document.getElementById('modalContent').innerHTML = `
+                <h2>Edit Customer</h2>
+                <form id="customerForm">
+                    <div class="form-group">
+                        <label>Name *</label>
+                        <input type="text" name="name" value="${customer.name}" required>
+                    </div>
+                    <div class="form-group">
+                        <label>Email *</label>
+                        <input type="email" name="email" value="${customer.email}" required>
+                    </div>
+                    <div class="form-group">
+                        <label>Phone *</label>
+                        <input type="tel" name="phone" value="${customer.phone}" required>
+                    </div>
+                    <div class="form-group">
+                        <label>Address</label>
+                        <input type="text" name="address" value="${customer.address || ''}">
+                    </div>
+                    <div class="form-actions">
+                        <button type="button" class="btn" onclick="closeModal()">Cancel</button>
+                        <button type="submit" class="btn btn-primary">Update Customer</button>
+                    </div>
+                </form>
+            `;
+            document.getElementById('customerForm').addEventListener('submit', async (e) => {
+                e.preventDefault();
+                const formData = new FormData(e.target);
+                const data = Object.fromEntries(formData);
+                const result = await api(`/api/customers/${id}`, {
+                    method: 'PUT',
+                    body: JSON.stringify(data)
+                });
+                if (result && result.success) {
+                    closeModal();
+                    loadData();
+                }
+            });
+            document.getElementById('modal').classList.add('active');
+        }
+
+        function editVehicle(id) {
+            const vehicle = vehicles.find(v => v.id === id);
+            if (!vehicle) return;
+
+            document.getElementById('modalContent').innerHTML = `
+                <h2>Edit Vehicle</h2>
+                <form id="vehicleForm">
+                    <div class="form-group">
+                        <label>Customer *</label>
+                        <select name="customer_id" required>
+                            ${customers.map(c => `<option value="${c.id}" ${c.id === vehicle.customer_id ? 'selected' : ''}>${c.name}</option>`).join('')}
+                        </select>
+                    </div>
+                    <div class="form-group">
+                        <label>Make *</label>
+                        <input type="text" name="make" value="${vehicle.make}" required>
+                    </div>
+                    <div class="form-group">
+                        <label>Model *</label>
+                        <input type="text" name="model" value="${vehicle.model}" required>
+                    </div>
+                    <div class="form-group">
+                        <label>Year *</label>
+                        <input type="number" name="year" value="${vehicle.year}" required min="1900" max="2100">
+                    </div>
+                    <div class="form-group">
+                        <label>License Plate *</label>
+                        <input type="text" name="license_plate" value="${vehicle.license_plate}" required>
+                    </div>
+                    <div class="form-group">
+                        <label>VIN</label>
+                        <input type="text" name="vin" value="${vehicle.vin || ''}">
+                    </div>
+                    <div class="form-group">
+                        <label>Color</label>
+                        <input type="text" name="color" value="${vehicle.color || ''}">
+                    </div>
+                    <div class="form-actions">
+                        <button type="button" class="btn" onclick="closeModal()">Cancel</button>
+                        <button type="submit" class="btn btn-primary">Update Vehicle</button>
+                    </div>
+                </form>
+            `;
+            document.getElementById('vehicleForm').addEventListener('submit', async (e) => {
+                e.preventDefault();
+                const formData = new FormData(e.target);
+                const data = Object.fromEntries(formData);
+                const result = await api(`/api/vehicles/${id}`, {
+                    method: 'PUT',
+                    body: JSON.stringify(data)
+                });
+                if (result && result.success) {
+                    closeModal();
+                    loadData();
+                }
+            });
+            document.getElementById('modal').classList.add('active');
+        }
+
+        function editService(id) {
+            const service = services.find(s => s.id === id);
+            if (!service) return;
+
+            document.getElementById('modalContent').innerHTML = `
+                <h2>Edit Service</h2>
+                <form id="serviceForm">
+                    <div class="form-group">
+                        <label>Vehicle *</label>
+                        <select name="vehicle_id" required>
+                            ${vehicles.map(v => `<option value="${v.id}" ${v.id === service.vehicle_id ? 'selected' : ''}>${v.make} ${v.model} (${v.license_plate})</option>`).join('')}
+                        </select>
+                    </div>
+                    <div class="form-group">
+                        <label>Service Type *</label>
+                        <input type="text" name="service_type" value="${service.service_type}" required>
+                    </div>
+                    <div class="form-group">
+                        <label>Description</label>
+                        <textarea name="description" rows="3">${service.description || ''}</textarea>
+                    </div>
+                    <div class="form-group">
+                        <label>Cost (KSh) *</label>
+                        <input type="number" name="cost" value="${service.cost}" step="0.01" required>
+                    </div>
+                    <div class="form-group">
+                        <label>Status *</label>
+                        <select name="status" required>
+                            <option value="pending" ${service.status === 'pending' ? 'selected' : ''}>Pending</option>
+                            <option value="in_progress" ${service.status === 'in_progress' ? 'selected' : ''}>In Progress</option>
+                            <option value="completed" ${service.status === 'completed' ? 'selected' : ''}>Completed</option>
+                        </select>
+                    </div>
+                    <div class="form-group">
+                        <label>Technician</label>
+                        <input type="text" name="technician" value="${service.technician || ''}">
+                    </div>
+                    <div class="form-group">
+                        <label>Notes</label>
+                        <textarea name="notes" rows="2">${service.notes || ''}</textarea>
+                    </div>
+                    <div class="form-actions">
+                        <button type="button" class="btn" onclick="closeModal()">Cancel</button>
+                        <button type="submit" class="btn btn-primary">Update Service</button>
+                    </div>
+                </form>
+            `;
+            document.getElementById('serviceForm').addEventListener('submit', async (e) => {
+                e.preventDefault();
+                const formData = new FormData(e.target);
+                const data = Object.fromEntries(formData);
+                const result = await api(`/api/services/${id}`, {
+                    method: 'PUT',
+                    body: JSON.stringify(data)
+                });
+                if (result && result.success) {
+                    closeModal();
+                    loadData();
+                }
+            });
+            document.getElementById('modal').classList.add('active');
+        }
+
+        function editBooking(id) {
+            const booking = bookings.find(b => b.id === id);
+            if (!booking) return;
+
+            document.getElementById('modalContent').innerHTML = `
+                <h2>Edit Booking</h2>
+                <form id="bookingForm">
+                    <div class="form-group">
+                        <label>Vehicle *</label>
+                        <select name="vehicle_id" required>
+                            ${vehicles.map(v => `<option value="${v.id}" ${v.id === booking.vehicle_id ? 'selected' : ''}>${v.make} ${v.model} (${v.license_plate})</option>`).join('')}
+                        </select>
+                    </div>
+                    <div class="form-group">
+                        <label>Service *</label>
+                        <select name="service_catalog_id" required>
+                            ${catalog.map(s => `<option value="${s.id}" ${s.id === booking.service_catalog_id ? 'selected' : ''}>${s.service_name} - KSh ${s.base_price}</option>`).join('')}
+                        </select>
+                    </div>
+                    <div class="form-group">
+                        <label>Date *</label>
+                        <input type="date" name="booking_date" value="${booking.booking_date}" required>
+                    </div>
+                    <div class="form-group">
+                        <label>Time *</label>
+                        <input type="time" name="booking_time" value="${booking.booking_time}" required>
+                    </div>
+                    <div class="form-group">
+                        <label>Technician</label>
+                        <select name="assigned_technician_id">
+                            <option value="">Not assigned</option>
+                            ${technicians.map(t => `<option value="${t.id}" ${t.id === booking.assigned_technician_id ? 'selected' : ''}>${t.name}</option>`).join('')}
+                        </select>
+                    </div>
+                    <div class="form-group">
+                        <label>Status *</label>
+                        <select name="status" required>
+                            <option value="scheduled" ${booking.status === 'scheduled' ? 'selected' : ''}>Scheduled</option>
+                            <option value="completed" ${booking.status === 'completed' ? 'selected' : ''}>Completed</option>
+                            <option value="cancelled" ${booking.status === 'cancelled' ? 'selected' : ''}>Cancelled</option>
+                        </select>
+                    </div>
+                    <div class="form-group">
+                        <label>Notes</label>
+                        <textarea name="notes" rows="2">${booking.notes || ''}</textarea>
+                    </div>
+                    <div class="form-actions">
+                        <button type="button" class="btn" onclick="closeModal()">Cancel</button>
+                        <button type="submit" class="btn btn-primary">Update Booking</button>
+                    </div>
+                </form>
+            `;
+            document.getElementById('bookingForm').addEventListener('submit', async (e) => {
+                e.preventDefault();
+                const formData = new FormData(e.target);
+                const data = Object.fromEntries(formData);
+                const result = await api(`/api/bookings/${id}`, {
+                    method: 'PUT',
+                    body: JSON.stringify(data)
+                });
+                if (result && result.success) {
+                    closeModal();
+                    loadData();
+                }
+            });
+            document.getElementById('modal').classList.add('active');
+        }
+
+        function editTechnician(id) {
+            const tech = technicians.find(t => t.id === id);
+            if (!tech) return;
+
+            document.getElementById('modalContent').innerHTML = `
+                <h2>Edit Technician</h2>
+                <form id="technicianForm">
+                    <div class="form-group">
+                        <label>Name *</label>
+                        <input type="text" name="name" value="${tech.name}" required>
+                    </div>
+                    <div class="form-group">
+                        <label>Specialization</label>
+                        <input type="text" name="specialization" value="${tech.specialization || ''}">
+                    </div>
+                    <div class="form-group">
+                        <label>Phone</label>
+                        <input type="tel" name="phone" value="${tech.phone || ''}">
+                    </div>
+                    <div class="form-group">
+                        <label>Email</label>
+                        <input type="email" name="email" value="${tech.email || ''}">
+                    </div>
+                    <div class="form-group">
+                        <label>Status *</label>
+                        <select name="status" required>
+                            <option value="available" ${tech.status === 'available' ? 'selected' : ''}>Available</option>
+                            <option value="busy" ${tech.status === 'busy' ? 'selected' : ''}>Busy</option>
+                        </select>
+                    </div>
+                    <div class="form-actions">
+                        <button type="button" class="btn" onclick="closeModal()">Cancel</button>
+                        <button type="submit" class="btn btn-primary">Update Technician</button>
+                    </div>
+                </form>
+            `;
+            document.getElementById('technicianForm').addEventListener('submit', async (e) => {
+                e.preventDefault();
+                const formData = new FormData(e.target);
+                const data = Object.fromEntries(formData);
+                const result = await api(`/api/technicians/${id}`, {
+                    method: 'PUT',
+                    body: JSON.stringify(data)
+                });
+                if (result && result.success) {
+                    closeModal();
+                    loadData();
+                }
+            });
+            document.getElementById('modal').classList.add('active');
+        }
+
+        function editPart(id) {
+            const part = parts.find(p => p.id === id);
+            if (!part) return;
+
+            document.getElementById('modalContent').innerHTML = `
+                <h2>Edit Part</h2>
+                <form id="partForm">
+                    <div class="form-group">
+                        <label>Part Number *</label>
+                        <input type="text" name="part_number" value="${part.part_number}" required>
+                    </div>
+                    <div class="form-group">
+                        <label>Name *</label>
+                        <input type="text" name="name" value="${part.name}" required>
+                    </div>
+                    <div class="form-group">
+                        <label>Description</label>
+                        <textarea name="description" rows="2">${part.description || ''}</textarea>
+                    </div>
+                    <div class="form-group">
+                        <label>Quantity *</label>
+                        <input type="number" name="quantity" value="${part.quantity}" required min="0">
+                    </div>
+                    <div class="form-group">
+                        <label>Unit Price (KSh) *</label>
+                        <input type="number" name="unit_price" value="${part.unit_price}" step="0.01" required>
+                    </div>
+                    <div class="form-group">
+                        <label>Supplier</label>
+                        <input type="text" name="supplier" value="${part.supplier || ''}">
+                    </div>
+                    <div class="form-group">
+                        <label>Reorder Level *</label>
+                        <input type="number" name="reorder_level" value="${part.reorder_level}" required min="0">
+                    </div>
+                    <div class="form-actions">
+                        <button type="button" class="btn" onclick="closeModal()">Cancel</button>
+                        <button type="submit" class="btn btn-primary">Update Part</button>
+                    </div>
+                </form>
+            `;
+            document.getElementById('partForm').addEventListener('submit', async (e) => {
+                e.preventDefault();
+                const formData = new FormData(e.target);
+                const data = Object.fromEntries(formData);
+                const result = await api(`/api/parts/${id}`, {
+                    method: 'PUT',
+                    body: JSON.stringify(data)
+                });
+                if (result && result.success) {
+                    closeModal();
+                    loadData();
+                }
+            });
+            document.getElementById('modal').classList.add('active');
+        }
+
+        function editCatalog(id) {
+            const service = catalog.find(s => s.id === id);
+            if (!service) return;
+
+            document.getElementById('modalContent').innerHTML = `
+                <h2>Edit Service Catalog</h2>
+                <form id="catalogForm">
+                    <div class="form-group">
+                        <label>Service Name *</label>
+                        <input type="text" name="service_name" value="${service.service_name}" required>
+                    </div>
+                    <div class="form-group">
+                        <label>Description</label>
+                        <textarea name="description" rows="3">${service.description || ''}</textarea>
+                    </div>
+                    <div class="form-group">
+                        <label>Base Price (KSh) *</label>
+                        <input type="number" name="base_price" value="${service.base_price}" step="0.01" required>
+                    </div>
+                    <div class="form-group">
+                        <label>Estimated Duration (minutes) *</label>
+                        <input type="number" name="estimated_duration" value="${service.estimated_duration}" required min="1">
+                    </div>
+                    <div class="form-group">
+                        <label>Category</label>
+                        <input type="text" name="category" value="${service.category || ''}">
+                    </div>
+                    <div class="form-actions">
+                        <button type="button" class="btn" onclick="closeModal()">Cancel</button>
+                        <button type="submit" class="btn btn-primary">Update Service</button>
+                    </div>
+                </form>
+            `;
+            document.getElementById('catalogForm').addEventListener('submit', async (e) => {
+                e.preventDefault();
+                const formData = new FormData(e.target);
+                const data = Object.fromEntries(formData);
+                const result = await api(`/api/service-catalog/${id}`, {
+                    method: 'PUT',
+                    body: JSON.stringify(data)
+                });
+                if (result && result.success) {
+                    closeModal();
+                    loadData();
+                }
+            });
+            document.getElementById('modal').classList.add('active');
+        }
 
         // Delete functions for new features
         async function deleteBooking(id) {
@@ -1867,25 +2280,35 @@ class GarageRequestHandler(http.server.SimpleHTTPRequestHandler):
 
         self.send_response(200)
         self.send_header('Content-type', 'text/html')
+        self.send_security_headers()
         self.end_headers()
         self.wfile.write(html.encode())
 
     def handle_login(self, data):
-        username = data.get('username')
-        password = data.get('password')
-        password_hash = hashlib.sha256(password.encode()).hexdigest()
+        username = data.get('username', '').strip()
+        password = data.get('password', '')
+
+        if not username or not password:
+            self.send_json_response({'success': False, 'message': 'Username and password are required'}, 400)
+            return
+
+        # Rate limiting
+        identifier = f"admin_{username}"
+        if not check_rate_limit(identifier):
+            self.send_json_response({'success': False, 'message': 'Too many login attempts. Please try again later.'}, 429)
+            return
 
         conn = sqlite3.connect(DB_FILE)
         cursor = conn.cursor()
-        cursor.execute('SELECT id FROM users WHERE username = ? AND password_hash = ?',
-                      (username, password_hash))
+        cursor.execute('SELECT id, password_hash FROM users WHERE username = ?', (username,))
         user = cursor.fetchone()
         conn.close()
 
-        if user:
+        if user and verify_password(password, user[1]):
             token = create_session(user[0])
             self.send_json_response({'success': True, 'token': token})
         else:
+            record_login_attempt(identifier)
             self.send_json_response({'success': False, 'message': 'Invalid credentials'}, 401)
 
     def handle_register(self, data):
@@ -2148,36 +2571,48 @@ class GarageRequestHandler(http.server.SimpleHTTPRequestHandler):
 
     # Customer authentication
     def handle_customer_login(self, data):
-        email = data.get('email')
-        password = data.get('password')
-        password_hash = hashlib.sha256(password.encode()).hexdigest()
+        email = data.get('email', '').strip().lower()
+        password = data.get('password', '')
+
+        if not email or not password:
+            self.send_json_response({'success': False, 'message': 'Email and password are required'}, 400)
+            return
+
+        # Rate limiting
+        identifier = f"customer_{email}"
+        if not check_rate_limit(identifier):
+            self.send_json_response({'success': False, 'message': 'Too many login attempts. Please try again in 5 minutes.'}, 429)
+            return
 
         conn = sqlite3.connect(DB_FILE)
         cursor = conn.cursor()
         cursor.execute('''
-            SELECT cu.customer_id, c.name, cu.status
+            SELECT cu.customer_id, c.name, cu.status, cu.password_hash
             FROM customer_users cu
             JOIN customers c ON cu.customer_id = c.id
-            WHERE cu.email = ? AND cu.password_hash = ?
-        ''', (email, password_hash))
+            WHERE cu.email = ?
+        ''', (email,))
         customer = cursor.fetchone()
         conn.close()
 
-        if customer:
+        if customer and verify_password(password, customer[3]):
             # Check if account is active
             if customer[2] == 'suspended':
                 self.send_json_response({'success': False, 'message': 'Account suspended. Please contact support.'}, 403)
+            elif customer[2] == 'pending_verification':
+                self.send_json_response({'success': False, 'message': 'Account pending verification. Please check your email.'}, 403)
             else:
                 token = create_customer_session(customer[0])
                 self.send_json_response({'success': True, 'token': token, 'name': customer[1]})
         else:
+            record_login_attempt(identifier)
             self.send_json_response({'success': False, 'message': 'Invalid credentials'}, 401)
 
     def handle_customer_register(self, data):
         import re
 
         # Validate required fields
-        email = data.get('email', '').strip()
+        email = data.get('email', '').strip().lower()
         password = data.get('password', '')
         name = data.get('name', '').strip()
         phone = data.get('phone', '').strip()
@@ -2231,28 +2666,29 @@ class GarageRequestHandler(http.server.SimpleHTTPRequestHandler):
                 ''', (name, email, phone, data.get('address', '')))
                 customer_id = cursor.lastrowid
 
-            # Hash password
-            password_hash = hashlib.sha256(password.encode()).hexdigest()
+            # Hash password with PBKDF2
+            password_hash = hash_password(password)
 
             # Generate verification token
             verification_token = secrets.token_urlsafe(32)
 
-            # Create customer_user record with pending_verification status
+            # Create customer_user record as active (email verification can be added later)
+            # Changed to 'active' for immediate login after registration
             cursor.execute('''
                 INSERT INTO customer_users (customer_id, email, password_hash, status, verification_token)
                 VALUES (?, ?, ?, ?, ?)
-            ''', (customer_id, email, password_hash, 'pending_verification', verification_token))
+            ''', (customer_id, email, password_hash, 'active', verification_token))
 
             user_id = cursor.lastrowid
             conn.commit()
             conn.close()
 
-            # In a real application, you would send a verification email here
-            # For now, we'll return success with the user_id and a message
+            # In a production application, you would send a verification email here
+            # For now, we'll activate the account immediately for better UX
             self.send_json_response({
                 'success': True,
                 'user_id': user_id,
-                'message': 'Registration successful! Your account is pending verification.'
+                'message': 'Registration successful! You can now log in with your credentials.'
             })
 
         except Exception as e:
@@ -2735,22 +3171,99 @@ class GarageRequestHandler(http.server.SimpleHTTPRequestHandler):
         .status-scheduled { background: #cfe2ff; color: #084298; }
         .status-completed { background: #d1e7dd; color: #0f5132; }
         .status-cancelled { background: #f8d7da; color: #842029; }
+
+        /* Password Strength Indicator */
+        .password-strength {
+            margin-top: 8px;
+            height: 4px;
+            background: #e0e0e0;
+            border-radius: 2px;
+            overflow: hidden;
+        }
+        .password-strength-bar {
+            height: 100%;
+            transition: all 0.3s;
+            width: 0%;
+        }
+        .strength-weak { background: #f44336; width: 33%; }
+        .strength-medium { background: #ff9800; width: 66%; }
+        .strength-strong { background: #4caf50; width: 100%; }
+        .password-strength-text {
+            font-size: 12px;
+            margin-top: 4px;
+            font-weight: 600;
+        }
+        .text-weak { color: #f44336; }
+        .text-medium { color: #ff9800; }
+        .text-strong { color: #4caf50; }
+
+        /* Error/Success Messages */
+        .message {
+            padding: 12px 16px;
+            border-radius: 5px;
+            margin-bottom: 15px;
+            font-size: 14px;
+            display: none;
+        }
+        .message.show { display: block; }
+        .message-error {
+            background: #f8d7da;
+            color: #842029;
+            border: 1px solid #f5c2c7;
+        }
+        .message-success {
+            background: #d1e7dd;
+            color: #0f5132;
+            border: 1px solid #badbcc;
+        }
+
+        /* Loading State */
+        .btn-loading {
+            position: relative;
+            color: transparent !important;
+        }
+        .btn-loading::after {
+            content: "";
+            position: absolute;
+            width: 16px;
+            height: 16px;
+            top: 50%;
+            left: 50%;
+            margin-left: -8px;
+            margin-top: -8px;
+            border: 2px solid #ffffff;
+            border-radius: 50%;
+            border-top-color: transparent;
+            animation: spinner 0.6s linear infinite;
+        }
+        @keyframes spinner {
+            to { transform: rotate(360deg); }
+        }
+
+        /* Better input focus states */
+        .form-group input:focus {
+            outline: none;
+            border-color: #ff6b35;
+            box-shadow: 0 0 0 3px rgba(255, 107, 53, 0.1);
+        }
     </style>
 </head>
 <body>
     <div id="loginView" class="login-container">
         <h2>Customer Portal</h2>
         <p style="margin-bottom: 20px; color: #666;">Login to view your bookings and vehicles</p>
+        <div id="loginSuccess" class="message message-success"></div>
+        <div id="loginError" class="message message-error"></div>
         <form id="loginForm">
             <div class="form-group">
                 <label>Email</label>
-                <input type="email" id="email" value="john.smith@email.com" required>
+                <input type="email" id="email" placeholder="your.email@example.com" required autocomplete="email">
             </div>
             <div class="form-group">
                 <label>Password</label>
-                <input type="password" id="password" value="customer123" required>
+                <input type="password" id="password" placeholder="Enter your password" required autocomplete="current-password">
             </div>
-            <button type="submit" class="btn btn-primary" style="width: 100%">Login</button>
+            <button type="submit" id="loginBtn" class="btn btn-primary" style="width: 100%">Login</button>
         </form>
         <p style="margin-top: 20px; text-align: center;">
             Don't have an account? <a href="#" onclick="showRegister(); return false;" style="color: #ff6b35;">Register here</a>
@@ -2763,33 +3276,39 @@ class GarageRequestHandler(http.server.SimpleHTTPRequestHandler):
     <div id="registerView" class="login-container hidden">
         <h2>Create Account</h2>
         <p style="margin-bottom: 20px; color: #666;">Register to manage your vehicle services</p>
+        <div id="registerError" class="message message-error"></div>
+        <div id="registerSuccess" class="message message-success"></div>
         <form id="registerForm">
             <div class="form-group">
                 <label>Full Name *</label>
-                <input type="text" id="reg_name" required>
+                <input type="text" id="reg_name" placeholder="John Doe" required autocomplete="name">
             </div>
             <div class="form-group">
                 <label>Email *</label>
-                <input type="email" id="reg_email" required>
+                <input type="email" id="reg_email" placeholder="your.email@example.com" required autocomplete="email">
             </div>
             <div class="form-group">
                 <label>Phone</label>
-                <input type="tel" id="reg_phone">
+                <input type="tel" id="reg_phone" placeholder="555-0123" autocomplete="tel">
             </div>
             <div class="form-group">
                 <label>Address</label>
-                <input type="text" id="reg_address">
+                <input type="text" id="reg_address" placeholder="123 Main Street" autocomplete="street-address">
             </div>
             <div class="form-group">
                 <label>Password *</label>
-                <input type="password" id="reg_password" required>
+                <input type="password" id="reg_password" placeholder="Create a strong password" required autocomplete="new-password">
+                <div class="password-strength">
+                    <div id="strengthBar" class="password-strength-bar"></div>
+                </div>
+                <div id="strengthText" class="password-strength-text"></div>
                 <small style="color: #666; font-size: 12px;">Min 8 characters, must include uppercase, lowercase, and number</small>
             </div>
             <div class="form-group">
                 <label>Confirm Password *</label>
-                <input type="password" id="reg_confirm_password" required>
+                <input type="password" id="reg_confirm_password" placeholder="Re-enter your password" required autocomplete="new-password">
             </div>
-            <button type="submit" class="btn btn-primary" style="width: 100%">Register</button>
+            <button type="submit" id="registerBtn" class="btn btn-primary" style="width: 100%">Register</button>
         </form>
         <p style="margin-top: 20px; text-align: center;">
             Already have an account? <a href="#" onclick="showLogin(); return false;" style="color: #ff6b35;">Login here</a>
@@ -2905,24 +3424,97 @@ class GarageRequestHandler(http.server.SimpleHTTPRequestHandler):
             return response.json();
         }
 
+        // Helper functions for UI
+        function showMessage(elementId, message, isError = true) {
+            const el = document.getElementById(elementId);
+            el.textContent = message;
+            el.className = isError ? 'message message-error show' : 'message message-success show';
+            setTimeout(() => el.classList.remove('show'), 5000);
+        }
+
+        function setLoading(buttonId, isLoading) {
+            const btn = document.getElementById(buttonId);
+            if (isLoading) {
+                btn.classList.add('btn-loading');
+                btn.disabled = true;
+            } else {
+                btn.classList.remove('btn-loading');
+                btn.disabled = false;
+            }
+        }
+
+        // Password strength checker
+        function checkPasswordStrength(password) {
+            let strength = 0;
+            const strengthBar = document.getElementById('strengthBar');
+            const strengthText = document.getElementById('strengthText');
+
+            if (!password) {
+                strengthBar.className = 'password-strength-bar';
+                strengthText.textContent = '';
+                return;
+            }
+
+            // Check length
+            if (password.length >= 8) strength++;
+            if (password.length >= 12) strength++;
+
+            // Check character types
+            if (/[a-z]/.test(password)) strength++;
+            if (/[A-Z]/.test(password)) strength++;
+            if (/\d/.test(password)) strength++;
+            if (/[^a-zA-Z0-9]/.test(password)) strength++;
+
+            // Determine strength level
+            if (strength <= 2) {
+                strengthBar.className = 'password-strength-bar strength-weak';
+                strengthText.className = 'password-strength-text text-weak';
+                strengthText.textContent = 'Weak password';
+            } else if (strength <= 4) {
+                strengthBar.className = 'password-strength-bar strength-medium';
+                strengthText.className = 'password-strength-text text-medium';
+                strengthText.textContent = 'Medium strength';
+            } else {
+                strengthBar.className = 'password-strength-bar strength-strong';
+                strengthText.className = 'password-strength-text text-strong';
+                strengthText.textContent = 'Strong password';
+            }
+        }
+
+        // Add password strength checker to registration password field
+        document.getElementById('reg_password').addEventListener('input', (e) => {
+            checkPasswordStrength(e.target.value);
+        });
+
         document.getElementById('loginForm').addEventListener('submit', async (e) => {
             e.preventDefault();
-            const email = document.getElementById('email').value;
+            const email = document.getElementById('email').value.trim();
             const password = document.getElementById('password').value;
-            const result = await api('/api/customer-login', {
-                method: 'POST',
-                body: JSON.stringify({ email, password })
-            });
-            if (result && result.success) {
-                token = result.token;
-                customerName = result.name;
-                localStorage.setItem('customer_token', token);
-                document.getElementById('loginView').classList.add('hidden');
-                document.getElementById('mainView').classList.remove('hidden');
-                document.getElementById('customerName').textContent = customerName;
-                loadData();
-            } else {
-                alert(result.message || 'Login failed');
+
+            setLoading('loginBtn', true);
+            document.getElementById('loginError').classList.remove('show');
+
+            try {
+                const result = await api('/api/customer-login', {
+                    method: 'POST',
+                    body: JSON.stringify({ email, password })
+                });
+
+                if (result && result.success) {
+                    token = result.token;
+                    customerName = result.name;
+                    localStorage.setItem('customer_token', token);
+                    document.getElementById('loginView').classList.add('hidden');
+                    document.getElementById('mainView').classList.remove('hidden');
+                    document.getElementById('customerName').textContent = customerName;
+                    loadData();
+                } else {
+                    showMessage('loginError', result.message || 'Login failed. Please check your credentials.');
+                }
+            } catch (error) {
+                showMessage('loginError', 'Network error. Please try again.');
+            } finally {
+                setLoading('loginBtn', false);
             }
         });
 
@@ -2936,55 +3528,79 @@ class GarageRequestHandler(http.server.SimpleHTTPRequestHandler):
             const password = document.getElementById('reg_password').value;
             const confirmPassword = document.getElementById('reg_confirm_password').value;
 
+            // Hide previous messages
+            document.getElementById('registerError').classList.remove('show');
+            document.getElementById('registerSuccess').classList.remove('show');
+
             // Client-side validation
             if (password !== confirmPassword) {
-                alert('Passwords do not match');
+                showMessage('registerError', 'Passwords do not match');
                 return;
             }
 
             // Validate password strength
             if (password.length < 8) {
-                alert('Password must be at least 8 characters long');
+                showMessage('registerError', 'Password must be at least 8 characters long');
                 return;
             }
             if (!/[A-Z]/.test(password)) {
-                alert('Password must contain at least one uppercase letter');
+                showMessage('registerError', 'Password must contain at least one uppercase letter');
                 return;
             }
             if (!/[a-z]/.test(password)) {
-                alert('Password must contain at least one lowercase letter');
+                showMessage('registerError', 'Password must contain at least one lowercase letter');
                 return;
             }
             if (!/\d/.test(password)) {
-                alert('Password must contain at least one number');
+                showMessage('registerError', 'Password must contain at least one number');
                 return;
             }
 
-            const result = await api('/api/customer-register', {
-                method: 'POST',
-                body: JSON.stringify({ name, email, phone, address, password })
-            });
+            setLoading('registerBtn', true);
 
-            if (result && result.success) {
-                alert(result.message || 'Registration successful! Please login with your credentials.');
-                showLogin();
-                // Clear form
-                document.getElementById('registerForm').reset();
-                // Pre-fill login email
-                document.getElementById('email').value = email;
-            } else {
-                alert(result.message || 'Registration failed');
+            try {
+                const result = await api('/api/customer-register', {
+                    method: 'POST',
+                    body: JSON.stringify({ name, email, phone, address, password })
+                });
+
+                if (result && result.success) {
+                    showMessage('registerSuccess', result.message || 'Registration successful! Redirecting to login...', false);
+                    // Clear form
+                    document.getElementById('registerForm').reset();
+                    // Reset password strength indicator
+                    checkPasswordStrength('');
+                    // Redirect to login after 2 seconds
+                    setTimeout(() => {
+                        showLogin();
+                        // Pre-fill login email
+                        document.getElementById('email').value = email;
+                        showMessage('loginSuccess', 'Registration successful! Please login with your new credentials.', false);
+                    }, 2000);
+                } else {
+                    showMessage('registerError', result.message || 'Registration failed. Please try again.');
+                }
+            } catch (error) {
+                showMessage('registerError', 'Network error. Please try again.');
+            } finally {
+                setLoading('registerBtn', false);
             }
         });
 
         function showRegister() {
             document.getElementById('loginView').classList.add('hidden');
             document.getElementById('registerView').classList.remove('hidden');
+            // Clear login messages
+            document.getElementById('loginError').classList.remove('show');
+            document.getElementById('loginSuccess').classList.remove('show');
         }
 
         function showLogin() {
             document.getElementById('registerView').classList.add('hidden');
             document.getElementById('loginView').classList.remove('hidden');
+            // Clear registration messages
+            document.getElementById('registerError').classList.remove('show');
+            document.getElementById('registerSuccess').classList.remove('show');
         }
 
         function logout() {
@@ -3166,6 +3782,7 @@ class GarageRequestHandler(http.server.SimpleHTTPRequestHandler):
 </html>'''
         self.send_response(200)
         self.send_header('Content-type', 'text/html')
+        self.send_security_headers()
         self.end_headers()
         self.wfile.write(html.encode())
 
@@ -3199,7 +3816,7 @@ class GarageRequestHandler(http.server.SimpleHTTPRequestHandler):
     def send_json_response(self, data, status=200):
         self.send_response(status)
         self.send_header('Content-type', 'application/json')
-        self.send_header('Access-Control-Allow-Origin', '*')
+        self.send_security_headers()
         self.end_headers()
         self.wfile.write(json.dumps(data).encode())
 

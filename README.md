@@ -14,20 +14,42 @@ python3 garage_server.py
 
 Then open your browser to: **http://localhost:5000**
 
-**Default Login:**
+**Admin Portal Login** (http://localhost:5000):
 - Username: `admin`
 - Password: `admin123`
 
+**Customer Portal** (http://localhost:5000/customer):
+- Email: `john.smith@email.com`
+- Password: `customer123`
+- Or register a new account!
+
 ## ✨ Features
 
+### Admin Dashboard
 - **Customer Management** - Add, edit, delete customers with contact information
 - **Vehicle Tracking** - Register and track customer vehicles
 - **Service Records** - Complete service history with status tracking
+- **Technician Management** - Assign and track technicians
+- **Parts Inventory** - Track parts and supplies
+- **Service Catalog** - Manage available services and pricing
 - **Dashboard** - Real-time statistics and revenue tracking
-- **User Authentication** - Secure login with session management
+- **User Authentication** - Secure admin/staff login with session management
+
+### Customer Portal (NEW in v2.0!)
+- **Self-Registration** - Customers can create their own accounts
+- **Secure Login** - Password strength validation and rate limiting
+- **View Bookings** - See all service appointments
+- **Manage Vehicles** - View registered vehicles
+- **Browse Services** - Explore available services and pricing
+- **Cost Calculator** - Estimate service costs before booking
+- **Online Booking** - Schedule service appointments
+
+### Technical Features
 - **Responsive UI** - Clean, modern interface that works on all devices
 - **SQLite Database** - Lightweight, serverless database (auto-created)
 - **RESTful API** - Full API for integrations
+- **Health Monitoring** - `/health` endpoint for monitoring
+- **Zero Dependencies** - Pure Python standard library
 
 ## 🎯 Perfect For
 
@@ -120,20 +142,33 @@ See [DEPLOYMENT.md](DEPLOYMENT.md) for detailed deployment instructions includin
 - Cost tracking
 - Technician assignment
 
-## 🔒 Security
+## 🔒 Security (v2.0 - Production Ready!)
 
-- SHA-256 password hashing
-- Session-based authentication
-- SQL injection protection (parameterized queries)
-- XSS protection
-- CSRF considerations
+**NEW in v2.0 - Enterprise-Grade Security:**
+- ✅ **PBKDF2 Password Hashing** - 100,000 iterations (upgrade from SHA-256)
+- ✅ **Rate Limiting** - 5 failed attempts per 5 minutes
+- ✅ **Security Headers** - CSP, HSTS, X-Frame-Options, X-XSS-Protection
+- ✅ **Secure Session Management** - Automatic cleanup of expired sessions
+- ✅ **Environment Configuration** - Production/development modes
+- ✅ **CORS Protection** - Configurable allowed origins
+- ✅ **SQL Injection Protection** - Parameterized queries
+- ✅ **Password Strength Validation** - Real-time feedback
+- ✅ **Health Check Endpoint** - `/health` for monitoring
 
-**Production Recommendations:**
-1. Change default admin password immediately
-2. Use HTTPS (reverse proxy with SSL)
-3. Implement rate limiting
-4. Regular database backups
-5. Restrict network access
+**Additional Features:**
+- Customer registration with real-time validation
+- Password strength indicator in UI
+- Loading states and better error messages
+- Modern, production-ready login pages
+
+**Production Deployment:**
+See [PRODUCTION.md](PRODUCTION.md) for comprehensive deployment guide including:
+1. HTTPS setup with Nginx
+2. Systemd service configuration
+3. Docker deployment
+4. Environment variables
+5. Database backups
+6. Monitoring and health checks
 
 ## 🛠️ Customization
 
