@@ -16,60 +16,7 @@ import os
 import mimetypes
 
 PORT = int(os.environ.get('PORT', 5000))
-DB_FILE = 'garage_management.db'
-SECRET_KEY = os.environ.get('SECRET_KEY', secrets.token_hex(32))
-MAX_LOGIN_ATTEMPTS = 5
-LOGIN_ATTEMPT_WINDOW = 300  # 5 minutes
-
-# Rate limiting storage (in production, use Redis or similar)
-login_attempts = {}
-
-# Production configuration
-PRODUCTION = os.environ.get('PRODUCTION', 'false').lower() == 'true'
-ALLOWED_ORIGINS = os.environ.get('ALLOWED_ORIGINS', '*').split(',')
-
-# Password hashing with PBKDF2 (using standard library)
-def hash_password(password):
-    """Hash password using PBKDF2 with SHA-256"""
-    salt = secrets.token_bytes(32)
-    pwd_hash = hashlib.pbkdf2_hmac('sha256', password.encode('utf-8'), salt, 100000)
-    # Store salt and hash together, hex encoded
-    return salt.hex() + ':' + pwd_hash.hex()
-
-def verify_password(password, stored_hash):
-    """Verify password against stored PBKDF2 hash"""
-    # Handle legacy SHA-256 hashes (for backward compatibility during migration)
-    if ':' not in stored_hash:
-        # Legacy SHA-256 hash
-        return hashlib.sha256(password.encode()).hexdigest() == stored_hash
-
-    try:
-        salt_hex, pwd_hash_hex = stored_hash.split(':')
-        salt = bytes.fromhex(salt_hex)
-        pwd_hash = bytes.fromhex(pwd_hash_hex)
-        new_hash = hashlib.pbkdf2_hmac('sha256', password.encode('utf-8'), salt, 100000)
-        return new_hash == pwd_hash
-    except (ValueError, AttributeError):
-        return False
-
-def check_rate_limit(identifier):
-    """Check if identifier has exceeded rate limit"""
-    now = datetime.now().timestamp()
-    if identifier in login_attempts:
-        attempts = login_attempts[identifier]
-        # Clean old attempts
-        attempts = [ts for ts in attempts if now - ts < LOGIN_ATTEMPT_WINDOW]
-        login_attempts[identifier] = attempts
-        if len(attempts) >= MAX_LOGIN_ATTEMPTS:
-            return False
-    return True
-
-def record_login_attempt(identifier):
-    """Record a failed login attempt"""
-    now = datetime.now().timestamp()
-    if identifier not in login_attempts:
-        login_attempts[identifier] = []
-    login_attempts[identifier].append(now)
+DB_FILE = os.environ.get('DB_FILE', 'garage_management.db')
 
 # Initialize database
 def init_database():
@@ -437,6 +384,8 @@ class GarageRequestHandler(http.server.SimpleHTTPRequestHandler):
             self.serve_frontend()
         elif self.path == '/customer':
             self.serve_customer_portal()
+        elif self.path == '/health':
+            self.handle_health_check()
         elif self.path.startswith('/api/dashboard'):
             self.handle_dashboard()
         elif self.path.startswith('/api/customers'):
@@ -477,6 +426,8 @@ class GarageRequestHandler(http.server.SimpleHTTPRequestHandler):
 
         if self.path == '/api/login':
             self.handle_login(data)
+        elif self.path == '/api/register':
+            self.handle_register(data)
         elif self.path == '/api/customer-login':
             self.handle_customer_login(data)
         elif self.path == '/api/customer-register':
@@ -983,6 +934,44 @@ class GarageRequestHandler(http.server.SimpleHTTPRequestHandler):
             </div>
             <button type="submit" class="btn btn-primary" style="width: 100%">Login</button>
         </form>
+        <p style="margin-top: 20px; text-align: center;">
+            Don't have an account? <a href="#" onclick="showStaffRegister(); return false;" style="color: #ff6b35;">Register here</a>
+        </p>
+        <p style="margin-top: 10px; text-align: center;">
+            <a href="/customer" style="color: #666;">Customer Portal</a>
+        </p>
+    </div>
+
+    <div id="registerView" class="login-container hidden">
+        <h2>🔧 Create Staff Account</h2>
+        <p style="margin-bottom: 20px; color: #666;">Register for staff access</p>
+        <form id="registerForm">
+            <div class="form-group">
+                <label>Username *</label>
+                <input type="text" id="reg_username" required>
+                <small style="color: #666; font-size: 12px;">Unique username for login</small>
+            </div>
+            <div class="form-group">
+                <label>Password *</label>
+                <input type="password" id="reg_password" required>
+                <small style="color: #666; font-size: 12px;">Min 8 characters, must include uppercase, lowercase, and number</small>
+            </div>
+            <div class="form-group">
+                <label>Confirm Password *</label>
+                <input type="password" id="reg_confirm_password" required>
+            </div>
+            <div class="form-group">
+                <label>Role</label>
+                <select id="reg_role">
+                    <option value="staff">Staff</option>
+                    <option value="admin">Admin</option>
+                </select>
+            </div>
+            <button type="submit" class="btn btn-primary" style="width: 100%">Register</button>
+        </form>
+        <p style="margin-top: 20px; text-align: center;">
+            Already have an account? <a href="#" onclick="showStaffLogin(); return false;" style="color: #ff6b35;">Login here</a>
+        </p>
     </div>
 
     <div id="mainView" class="container hidden">
@@ -1190,9 +1179,68 @@ class GarageRequestHandler(http.server.SimpleHTTPRequestHandler):
                 document.getElementById('mainView').classList.remove('hidden');
                 loadData();
             } else {
-                alert('Login failed');
+                alert(result.message || 'Login failed');
             }
         });
+
+        document.getElementById('registerForm').addEventListener('submit', async (e) => {
+            e.preventDefault();
+
+            const username = document.getElementById('reg_username').value.trim();
+            const password = document.getElementById('reg_password').value;
+            const confirmPassword = document.getElementById('reg_confirm_password').value;
+            const role = document.getElementById('reg_role').value;
+
+            // Client-side validation
+            if (password !== confirmPassword) {
+                alert('Passwords do not match');
+                return;
+            }
+
+            // Validate password strength
+            if (password.length < 8) {
+                alert('Password must be at least 8 characters long');
+                return;
+            }
+            if (!/[A-Z]/.test(password)) {
+                alert('Password must contain at least one uppercase letter');
+                return;
+            }
+            if (!/[a-z]/.test(password)) {
+                alert('Password must contain at least one lowercase letter');
+                return;
+            }
+            if (!/\d/.test(password)) {
+                alert('Password must contain at least one number');
+                return;
+            }
+
+            const result = await api('/api/register', {
+                method: 'POST',
+                body: JSON.stringify({ username, password, role })
+            });
+
+            if (result && result.success) {
+                alert(result.message || 'Registration successful! Please login with your credentials.');
+                showStaffLogin();
+                // Clear form
+                document.getElementById('registerForm').reset();
+                // Pre-fill login username
+                document.getElementById('username').value = username;
+            } else {
+                alert(result.message || 'Registration failed');
+            }
+        });
+
+        function showStaffRegister() {
+            document.getElementById('loginView').classList.add('hidden');
+            document.getElementById('registerView').classList.remove('hidden');
+        }
+
+        function showStaffLogin() {
+            document.getElementById('registerView').classList.add('hidden');
+            document.getElementById('loginView').classList.remove('hidden');
+        }
 
         function logout() {
             localStorage.removeItem('token');
@@ -2262,6 +2310,74 @@ class GarageRequestHandler(http.server.SimpleHTTPRequestHandler):
         else:
             record_login_attempt(identifier)
             self.send_json_response({'success': False, 'message': 'Invalid credentials'}, 401)
+
+    def handle_register(self, data):
+        import re
+
+        # Validate required fields
+        username = data.get('username', '').strip()
+        password = data.get('password', '')
+        role = data.get('role', 'staff')
+
+        if not username or not password:
+            self.send_json_response({'success': False, 'message': 'Username and password are required'}, 400)
+            return
+
+        # Validate username (alphanumeric and underscore only)
+        if not re.match(r'^[a-zA-Z0-9_]+$', username):
+            self.send_json_response({'success': False, 'message': 'Username can only contain letters, numbers, and underscores'}, 400)
+            return
+
+        # Validate password strength (min 8 chars, has uppercase, lowercase, and number)
+        if len(password) < 8:
+            self.send_json_response({'success': False, 'message': 'Password must be at least 8 characters long'}, 400)
+            return
+        if not re.search(r'[A-Z]', password):
+            self.send_json_response({'success': False, 'message': 'Password must contain at least one uppercase letter'}, 400)
+            return
+        if not re.search(r'[a-z]', password):
+            self.send_json_response({'success': False, 'message': 'Password must contain at least one lowercase letter'}, 400)
+            return
+        if not re.search(r'\d', password):
+            self.send_json_response({'success': False, 'message': 'Password must contain at least one number'}, 400)
+            return
+
+        # Validate role
+        if role not in ['staff', 'admin']:
+            role = 'staff'
+
+        try:
+            conn = sqlite3.connect(DB_FILE)
+            cursor = conn.cursor()
+
+            # Check if username already exists
+            cursor.execute('SELECT id FROM users WHERE username = ?', (username,))
+            if cursor.fetchone():
+                conn.close()
+                self.send_json_response({'success': False, 'message': 'Username already exists'}, 400)
+                return
+
+            # Hash password
+            password_hash = hashlib.sha256(password.encode()).hexdigest()
+
+            # Create user record
+            cursor.execute('''
+                INSERT INTO users (username, password_hash, role)
+                VALUES (?, ?, ?)
+            ''', (username, password_hash, role))
+
+            user_id = cursor.lastrowid
+            conn.commit()
+            conn.close()
+
+            self.send_json_response({
+                'success': True,
+                'user_id': user_id,
+                'message': 'Registration successful! Please login with your credentials.'
+            })
+
+        except Exception as e:
+            self.send_json_response({'success': False, 'message': str(e)}, 400)
 
     def handle_stats(self):
         conn = sqlite3.connect(DB_FILE)
@@ -3667,62 +3783,28 @@ class GarageRequestHandler(http.server.SimpleHTTPRequestHandler):
         self.handle_stats()
 
     def handle_health_check(self):
-        """Health check endpoint for monitoring"""
+        """Health check endpoint for Render and monitoring"""
         try:
-            # Check database connection
+            # Check database connectivity
             conn = sqlite3.connect(DB_FILE)
             cursor = conn.cursor()
-            cursor.execute('SELECT COUNT(*) FROM users')
+            cursor.execute('SELECT 1')
             cursor.fetchone()
             conn.close()
 
-            # Clean up expired sessions
-            cleaned = cleanup_expired_sessions()
-
-            health_data = {
+            self.send_json_response({
                 'status': 'healthy',
-                'timestamp': datetime.now().isoformat(),
+                'service': 'garage-management-system',
                 'database': 'connected',
-                'sessions_cleaned': cleaned,
-                'version': '2.0.0',
-                'environment': 'production' if PRODUCTION else 'development'
-            }
-            self.send_json_response(health_data)
+                'timestamp': datetime.now().isoformat()
+            })
         except Exception as e:
-            health_data = {
+            self.send_json_response({
                 'status': 'unhealthy',
-                'timestamp': datetime.now().isoformat(),
-                'error': str(e)
-            }
-            self.send_json_response(health_data, 503)
-
-    def send_security_headers(self):
-        """Send security headers for production"""
-        # CORS - restrict in production
-        origin = ALLOWED_ORIGINS[0] if PRODUCTION and ALLOWED_ORIGINS[0] != '*' else '*'
-        self.send_header('Access-Control-Allow-Origin', origin)
-
-        # Security headers
-        self.send_header('X-Content-Type-Options', 'nosniff')
-        self.send_header('X-Frame-Options', 'DENY')
-        self.send_header('X-XSS-Protection', '1; mode=block')
-        self.send_header('Referrer-Policy', 'strict-origin-when-cross-origin')
-
-        # CSP - Content Security Policy
-        csp = (
-            "default-src 'self'; "
-            "script-src 'self' 'unsafe-inline'; "
-            "style-src 'self' 'unsafe-inline'; "
-            "img-src 'self' data:; "
-            "font-src 'self'; "
-            "connect-src 'self'; "
-            "frame-ancestors 'none';"
-        )
-        self.send_header('Content-Security-Policy', csp)
-
-        # HSTS - only in production with HTTPS
-        if PRODUCTION:
-            self.send_header('Strict-Transport-Security', 'max-age=31536000; includeSubDomains')
+                'service': 'garage-management-system',
+                'error': str(e),
+                'timestamp': datetime.now().isoformat()
+            }, 503)
 
     def send_json_response(self, data, status=200):
         self.send_response(status)
@@ -3739,14 +3821,32 @@ if __name__ == '__main__':
     print("=" * 60)
     print("🔧 GARAGE MANAGEMENT SYSTEM")
     print("=" * 60)
+
+    # Environment detection
+    is_render = os.environ.get('RENDER') == 'true'
+
     print(f"\n📊 Initializing database...")
+    print(f"   Database: {DB_FILE}")
+    if is_render:
+        print(f"   ⚠️  Running on Render - using ephemeral storage")
+        print(f"   💡 Data persists during restarts but not rebuilds")
     init_database()
-    print(f"\n🚀 Starting server on http://localhost:{PORT}")
+
+    print(f"\n🚀 Starting server on port {PORT}")
+    if is_render:
+        print(f"   🌐 Render URL: https://<your-app>.onrender.com")
+        print(f"   ✅ Health check: /health")
+    else:
+        print(f"   🌐 Local URL: http://localhost:{PORT}")
+
     print(f"\n🔐 Default Login:")
     print(f"   Username: admin")
     print(f"   Password: admin123")
-    print(f"\n🌐 Open your browser and navigate to:")
-    print(f"   http://localhost:{PORT}")
+
+    if not is_render:
+        print(f"\n🌐 Open your browser and navigate to:")
+        print(f"   http://localhost:{PORT}")
+
     print("\n✅ Server is running... Press Ctrl+C to stop\n")
     print("=" * 60 + "\n")
 
