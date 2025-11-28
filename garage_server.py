@@ -3252,6 +3252,7 @@ class GarageRequestHandler(http.server.SimpleHTTPRequestHandler):
     <div id="loginView" class="login-container">
         <h2>Customer Portal</h2>
         <p style="margin-bottom: 20px; color: #666;">Login to view your bookings and vehicles</p>
+        <div id="loginSuccess" class="message message-success"></div>
         <div id="loginError" class="message message-error"></div>
         <form id="loginForm">
             <div class="form-group">
@@ -3574,7 +3575,7 @@ class GarageRequestHandler(http.server.SimpleHTTPRequestHandler):
                         showLogin();
                         // Pre-fill login email
                         document.getElementById('email').value = email;
-                        showMessage('loginError', 'Please login with your new credentials', false);
+                        showMessage('loginSuccess', 'Registration successful! Please login with your new credentials.', false);
                     }, 2000);
                 } else {
                     showMessage('registerError', result.message || 'Registration failed. Please try again.');
@@ -3589,11 +3590,17 @@ class GarageRequestHandler(http.server.SimpleHTTPRequestHandler):
         function showRegister() {
             document.getElementById('loginView').classList.add('hidden');
             document.getElementById('registerView').classList.remove('hidden');
+            // Clear login messages
+            document.getElementById('loginError').classList.remove('show');
+            document.getElementById('loginSuccess').classList.remove('show');
         }
 
         function showLogin() {
             document.getElementById('registerView').classList.add('hidden');
             document.getElementById('loginView').classList.remove('hidden');
+            // Clear registration messages
+            document.getElementById('registerError').classList.remove('show');
+            document.getElementById('registerSuccess').classList.remove('show');
         }
 
         function logout() {
